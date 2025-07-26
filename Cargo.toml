@@ -1,0 +1,25 @@
+[package]
+name = "poly-cool"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+arbitrary = ["dep:arbitrary"]
+
+[dependencies]
+arbitrary = { version = "1.4.1", optional = true }
+arrayvec = { version = "0.7.6", default-features = false }
+
+[dev-dependencies]
+arbitrary = "1.4.1"
+arbtest = "0.3.2"
+criterion = "0.7.0"
+kurbo = "0.11.3"
+
+[[bench]]
+name = "cubic_roots"
+harness = false
+
+[[bench]]
+name = "quadratic_roots"
+harness = false
