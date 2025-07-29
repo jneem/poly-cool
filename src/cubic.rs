@@ -23,9 +23,37 @@ impl std::ops::Div<f64> for Cubic {
     }
 }
 
-struct TerminationData {
-    step: f64,
-    value: f64,
+impl std::ops::Mul<f64> for Cubic {
+    type Output = Cubic;
+
+    fn mul(self, rhs: f64) -> Cubic {
+        Cubic {
+            c0: self.c0 * rhs,
+            c1: self.c1 * rhs,
+            c2: self.c2 * rhs,
+            c3: self.c3 * rhs,
+        }
+    }
+}
+
+trait TerminationCondition {
+    fn stop(&self, last_step: f64, value: f64) -> bool;
+}
+
+struct InputError(f64);
+
+impl TerminationCondition for InputError {
+    fn stop(&self, last_step: f64, _value: f64) -> bool {
+        last_step.abs() <= self.0
+    }
+}
+
+struct ValueError(f64);
+
+impl TerminationCondition for ValueError {
+    fn stop(&self, _last_step: f64, value: f64) -> bool {
+        value.abs() <= self.0
+    }
 }
 
 fn different_signs(x: f64, y: f64) -> bool {
@@ -55,12 +83,15 @@ impl Cubic {
             .max(self.c3.abs())
     }
 
-    fn too_large_for_roots(&self) -> bool {
-        self.max_coeff() >= 2.0f64.powi(500)
-    }
-
-    fn shrinkage_factor() -> f64 {
-        2.0f64.powi(524)
+    fn deflate(&self, root: f64) -> Quadratic {
+        let a = self.c3;
+        let b = self.c2 + root * a;
+        let c = self.c1 + root * b;
+        Quadratic {
+            c2: a,
+            c1: b,
+            c0: c,
+        }
     }
 
     /// Computes the critical points of this cubic, as long
@@ -74,18 +105,13 @@ impl Cubic {
     ///     return +/- infinity as one of the roots.
     ///   - Unless some input is NaN, we don't return NaN.
     fn critical_points(&self) -> Option<(f64, f64)> {
-        let mut a = 3.0 * self.c3;
-        let mut b_2 = self.c2;
-        let mut c = self.c1;
-        let mut disc_4 = b_2 * b_2 - a * c;
+        let a = 3.0 * self.c3;
+        let b_2 = self.c2;
+        let c = self.c1;
+        let disc_4 = b_2 * b_2 - a * c;
 
         if !disc_4.is_finite() {
-            let scale = 2.0f64.powi(-515);
-            a = self.c3 * scale * 3.0;
-            b_2 *= scale;
-            c *= scale;
-            disc_4 = b_2 * b_2 - a * c;
-            debug_assert!(disc_4.is_finite());
+            return self.rescaled_critical_points();
         }
 
         if disc_4 > 0.0 {
@@ -98,7 +124,13 @@ impl Cubic {
         }
     }
 
-    fn one_root<Term: Fn(TerminationData) -> bool>(
+    #[cold]
+    fn rescaled_critical_points(&self) -> Option<(f64, f64)> {
+        let scale = 2.0f64.powi(-515);
+        (*self * scale).critical_points()
+    }
+
+    fn one_root<Term: TerminationCondition>(
         &self,
         mut lower: f64,
         mut upper: f64,
@@ -115,7 +147,60 @@ impl Cubic {
         let mut val_x = self.eval(x);
         let mut step = (upper - lower) / 2.0;
 
-        while x.is_finite() && !term(TerminationData { step, value: val_x }) {
+        while x.is_finite() && !term.stop(step, val_x) {
+            let root_in_first_half = different_signs(val_lower, val_x);
+            if root_in_first_half {
+                upper = x;
+            } else {
+                lower = x;
+            }
+
+            let deriv_x = self.deriv().eval(x);
+            debug_assert!(deriv_x.is_finite());
+            debug_assert!(val_x.is_finite());
+
+            step = -val_x / deriv_x;
+            let mut new_x = x + step;
+
+            if new_x <= lower || new_x >= upper {
+                new_x = lower + (upper - lower) / 2.0;
+
+                if new_x == upper || new_x == lower {
+                    // This should be rare, but it happens if they ask for more
+                    // accuracy than is reasonable. For example, suppse (because
+                    // of large coefficients) the output value jumps from -1.0
+                    // to 1.0 between adjacent floats and they ask for an output
+                    // error of smaller than 0.5. Then we'll eventually shrink
+                    // the search interval to a pair of adjacent floats and hit
+                    // this case.
+                    return new_x;
+                }
+            }
+            step = new_x - x;
+            x = new_x;
+            val_x = self.eval(x);
+        }
+        x
+    }
+
+    fn one_root_precomputed<Term: TerminationCondition>(
+        &self,
+        mut lower: f64,
+        mut upper: f64,
+        val_lower: f64,
+        val_upper: f64,
+        term: Term,
+    ) -> f64 {
+        if !val_lower.is_finite() || !val_upper.is_finite() || !self.deriv().is_finite() {
+            return f64::NAN;
+        }
+        debug_assert!(different_signs(val_lower, val_upper));
+
+        let mut x = lower + (upper - lower) / 2.0;
+        let mut val_x = self.eval(x);
+        let mut step = (upper - lower) / 2.0;
+
+        while x.is_finite() && !term.stop(step, val_x) {
             let root_in_first_half = different_signs(val_lower, val_x);
             if root_in_first_half {
                 upper = x;
@@ -152,15 +237,79 @@ impl Cubic {
     }
 
     pub fn root_between_with_output_error(self, lower: f64, upper: f64, y_error: f64) -> f64 {
-        self.one_root(lower, upper, |TerminationData { value, .. }| {
-            value.abs() <= y_error
-        })
+        self.one_root(lower, upper, ValueError(y_error))
     }
 
     pub fn root_between(self, lower: f64, upper: f64, x_error: f64) -> f64 {
-        self.one_root(lower, upper, |TerminationData { step, .. }| {
-            step.abs() <= x_error
-        })
+        self.one_root(lower, upper, InputError(x_error))
+    }
+
+    fn first_root<Term: TerminationCondition>(
+        self,
+        lower: f64,
+        upper: f64,
+        term: Term,
+    ) -> Option<f64> {
+        if let Some((x0, x1)) = self.critical_points() {
+            let possible_endpoints: [f64; 3] = [x0, x1, upper];
+            let mut last = lower;
+            let mut last_val = self.eval(last);
+            for x in possible_endpoints {
+                if x > last && x <= upper {
+                    let val = self.eval(x);
+                    if different_signs(last_val, val) {
+                        return Some(self.one_root(last, x, term));
+                    }
+
+                    last = x;
+                    last_val = val;
+                }
+            }
+            None
+        } else {
+            let lower_val = self.eval(lower);
+            let upper_val = self.eval(upper);
+            if different_signs(lower_val, upper_val) {
+                Some(self.one_root_precomputed(lower, upper, lower_val, upper_val, term))
+            } else {
+                None
+            }
+        }
+    }
+
+    fn all_roots_term<Term: TerminationCondition>(
+        self,
+        lower: f64,
+        upper: f64,
+        term: Term,
+    ) -> ArrayVec<f64, 3> {
+        let mut ret = ArrayVec::new();
+        if let Some(r) = self.first_root(lower, upper, term) {
+            ret.push(r);
+            let quad = self.deflate(r);
+            if let Some((x0, x1)) = quad.positive_discriminant_roots() {
+                if lower <= x0 && x0 <= upper {
+                    ret.push(x0);
+                }
+                if lower <= x1 && x1 <= upper {
+                    ret.push(x1);
+                }
+            }
+        }
+        ret
+    }
+
+    pub fn all_roots(self, lower: f64, upper: f64, x_error: f64) -> ArrayVec<f64, 3> {
+        self.all_roots_term(lower, upper, InputError(x_error))
+    }
+
+    pub fn all_roots_with_output_error(
+        self,
+        lower: f64,
+        upper: f64,
+        y_error: f64,
+    ) -> ArrayVec<f64, 3> {
+        self.all_roots_term(lower, upper, ValueError(y_error))
     }
 
     /// Computes all roots between `lower` and `upper`, to the desired accuracy.
@@ -176,16 +325,11 @@ impl Cubic {
     /// fine if you're using this root-finding to optimize a quartic, because
     /// double-roots of the derivative aren't local extrema.
     pub fn roots_between_with_output_error(
-        mut self,
+        self,
         lower: f64,
         upper: f64,
-        mut y_error: f64,
+        y_error: f64,
     ) -> ArrayVec<f64, 3> {
-        if self.too_large_for_roots() {
-            self = self / Cubic::shrinkage_factor();
-            y_error /= Cubic::shrinkage_factor();
-        }
-
         let mut possible_endpoints = ArrayVec::<f64, 3>::new();
         if let Some((x0, x1)) = self.critical_points() {
             possible_endpoints.push(x0);

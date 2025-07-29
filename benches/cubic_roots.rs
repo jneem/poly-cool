@@ -10,7 +10,10 @@ pub fn cubic_roots(c: &mut Criterion) {
     };
 
     c.bench_function("us", |b| {
-        b.iter(|| black_box(poly).roots_between_with_output_error(-1.0, 1.5, 1e-12))
+        b.iter(|| black_box(poly).roots_between_with_output_error(-1.0, 4.0, 1e-12))
+    });
+    c.bench_function("us deflated", |b| {
+        b.iter(|| black_box(poly).all_roots_with_output_error(-1.0, 4.0, 1e-12))
     });
     c.bench_function("root_between", |b| {
         b.iter(|| black_box(poly).root_between(-1.0, 1.5, 1e-12))

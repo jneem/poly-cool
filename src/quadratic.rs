@@ -108,10 +108,17 @@ impl Quadratic {
                 None
             }
         } else {
+            self.positive_discriminant_roots_scaled()
+        }
+    }
+
+    #[cold]
+    fn positive_discriminant_roots_scaled(&self) -> Option<(f64, f64)> {
+        if self.is_finite() {
             let scale = 2.0f64.powi(-515);
-            // TODO: this can stack overflow if we're infinite. How should
-            // we handle that?
             (*self * scale).positive_discriminant_roots()
+        } else {
+            None
         }
     }
 
