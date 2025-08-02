@@ -354,10 +354,149 @@ impl Cubic {
         }
         ret
     }
+
+    #[cold]
+    fn roots_blinn_renormalized(&self) -> ArrayVec<f64, 3> {
+        if !self.max_coeff().is_finite() {
+            ArrayVec::new()
+        } else {
+            (*self / 2.0f64.powi(128)).roots_blinn()
+        }
+    }
+
+    pub fn roots_blinn(&self) -> ArrayVec<f64, 3> {
+        let mut ret = ArrayVec::new();
+        let a = self.c3;
+        let b = self.c2 * (1.0 / 3.0);
+        let c = self.c1 * (1.0 / 3.0);
+        let d = self.c0;
+
+        let delta_1 = a * c - b * b;
+        let delta_2 = a * d - b * c;
+        let delta_3 = b * d - c * c;
+        let disc = 4.0 * delta_1 * delta_3 - delta_2 * delta_2;
+
+        // TODO: what about disc = 0?
+        if disc < 0.0 {
+            dbg!(disc);
+            let (tilde_a, tilde_c, tilde_d) = if b * b * b * d >= a * c * c * c {
+                (a, delta_1, -2.0 * b * delta_1 + a * delta_2)
+            } else {
+                (d, delta_3, -d * delta_2 + 2.0 * c * delta_3)
+            };
+            let t_0 = -tilde_a.copysign(tilde_d) * (-disc).sqrt();
+            let t_1 = -tilde_d + t_0;
+            let p = (t_1 / 2.0).cbrt();
+
+            let q = if t_0 == t_1 { -p } else { -tilde_c / p };
+            let tilde_x = if tilde_c <= 0.0 {
+                p + q
+            } else {
+                -tilde_d / (p * p + q * q + tilde_c)
+            };
+
+            let (x, w) = if b * b * b * d >= a * c * c * c {
+                (tilde_x - b, a)
+            } else {
+                (-d, tilde_x + c)
+            };
+
+            if !x.is_finite() || !w.is_finite() {
+                return self.roots_blinn_renormalized();
+            }
+
+            ret.push(x / w);
+        } else {
+            dbg!(disc);
+            fn one_root(a_or_d: f64, disc: f64, bar_c: f64, bar_d: f64) -> (f64, f64) {
+                let sqrt_c = (-bar_c).sqrt();
+                let theta = (1.0 / 3.0) * (a_or_d * disc.sqrt()).atan2(-bar_d).abs();
+                let (sin_theta, cos_theta) = theta.sin_cos();
+                dbg!(theta, cos_theta);
+                let tilde_x_1 = 2.0 * sqrt_c * cos_theta;
+                let tilde_x_3 = sqrt_c * (-theta.cos() - 3.0f64.sqrt() * sin_theta);
+                (tilde_x_1, tilde_x_3)
+            }
+
+            let bar_c_a = delta_1;
+            let bar_d_a = -2.0 * b * delta_1 + a * delta_2;
+            let (tilde_x_1_a, tilde_x_3_a) = one_root(a, disc, bar_c_a, bar_d_a);
+
+            let bar_c_d = delta_3;
+            let bar_d_d = -d * delta_2 + 2.0 * c * delta_3;
+            let (tilde_x_1_d, tilde_x_3_d) = one_root(d, disc, bar_c_d, bar_d_d);
+
+            let tilde_x_l = if tilde_x_1_a + tilde_x_3_a > 2.0 * b {
+                tilde_x_1_a
+            } else {
+                tilde_x_3_a
+            };
+            let tilde_x_s = if tilde_x_1_d + tilde_x_3_d < 2.0 * c {
+                tilde_x_1_d
+            } else {
+                tilde_x_3_d
+            };
+
+            let (x_l, w_l) = (tilde_x_l - b, a);
+            let (x_s, w_s) = (-d, tilde_x_s + c);
+
+            let e = w_l * w_s;
+            let f = -x_l * w_s - w_l * x_s;
+            let g = x_l * x_s;
+
+            let (x_m, w_m) = (c * f - b * g, c * e - b * f);
+
+            // TODO: check finiteness
+            ret.push(x_l / w_l);
+            ret.push(x_s / w_s);
+            ret.push(x_m / w_m);
+        }
+        ret
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn smoke() {
+        // Here's an example where Blinn's method has a large error. The
+        // small-magnitude root is about -1.0 and the large magnitude root is
+        // apparently of order 1e225, which then causes big errors when trying
+        // to compute the third root. I guess in general we have expect that
+        // the magnitude of the big root affects the error in the middle root.
+        // let poly = super::Cubic {
+        //     c0: -3.565233507454652e74,
+        //     c1: -3.5652335074546437e74,
+        //     c2: -1.2298855640101194e-17,
+        //     c3: 9.133009604987547e-243,
+        // };
+
+        let poly = super::Cubic {
+            c0: -3.565233507454652,
+            c1: -3.565233507454643,
+            c2: -1.2298855640101194e-17,
+            c3: 9.133009604987547e-300,
+        };
+
+        // let poly = super::Cubic {
+        //     c0: -5.7227204916679354e194,
+        //     c1: 1.2728341881889333e123,
+        //     c2: 7.093753818594869e-29,
+        //     c3: 9.883719282876428e-181,
+        // };
+        // let poly = super::Cubic {
+        //     c3: 1.0,
+        //     c2: -6.0,
+        //     c1: 11.0,
+        //     c0: -6.0,
+        // };
+        let roots = poly.roots_blinn();
+        dbg!(&roots);
+        for r in roots {
+            dbg!(poly.eval(r));
+        }
+    }
+
     #[test]
     fn root_evaluation() {
         arbtest::arbtest(|u| {
@@ -372,6 +511,19 @@ mod tests {
             // to lower the accuracy depending on what the actual root is: the
             // intermediate computations scale like the cube of the root.
             for r in c.roots_between_with_output_error(-10.0, 10.0, accuracy) {
+                let y = c.eval(r);
+                if y.is_finite() {
+                    assert!(y.abs() <= accuracy);
+                }
+            }
+            for r in c.roots_blinn() {
+                let y = c.eval(r);
+                if y.is_finite() {
+                    dbg!(c, r, y);
+                    assert!(y.abs() <= accuracy);
+                }
+            }
+            for r in c.all_roots_with_output_error(-10.0, 10.0, accuracy) {
                 let y = c.eval(r);
                 if y.is_finite() {
                     assert!(y.abs() <= accuracy);
