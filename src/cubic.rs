@@ -464,6 +464,10 @@ mod tests {
         // apparently of order 1e225, which then causes big errors when trying
         // to compute the third root. I guess in general we have expect that
         // the magnitude of the big root affects the error in the middle root.
+        //
+        // Correction: the middle root is actually ok here. It has a pretty
+        // large magnitude (1e17ish), and so it's allowed to not evaluate
+        // super close to zero.
         // let poly = super::Cubic {
         //     c0: -3.565233507454652e74,
         //     c1: -3.5652335074546437e74,
