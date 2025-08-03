@@ -1,6 +1,6 @@
 use arrayvec::ArrayVec;
 
-use crate::Quadratic;
+use crate::{InputError, Quadratic, TerminationCondition, ValueError, different_signs};
 
 #[derive(Debug, Copy, Clone)]
 pub struct Cubic {
@@ -34,30 +34,6 @@ impl std::ops::Mul<f64> for Cubic {
             c3: self.c3 * rhs,
         }
     }
-}
-
-trait TerminationCondition {
-    fn stop(&self, last_step: f64, value: f64) -> bool;
-}
-
-struct InputError(f64);
-
-impl TerminationCondition for InputError {
-    fn stop(&self, last_step: f64, _value: f64) -> bool {
-        last_step.abs() <= self.0
-    }
-}
-
-struct ValueError(f64);
-
-impl TerminationCondition for ValueError {
-    fn stop(&self, _last_step: f64, value: f64) -> bool {
-        value.abs() <= self.0
-    }
-}
-
-fn different_signs(x: f64, y: f64) -> bool {
-    (x < 0.0) != (y < 0.0)
 }
 
 impl Cubic {
@@ -258,7 +234,7 @@ impl Cubic {
                 if x > last && x <= upper {
                     let val = self.eval(x);
                     if different_signs(last_val, val) {
-                        return Some(self.one_root(last, x, term));
+                        return Some(self.one_root_precomputed(last, x, last_val, val, term));
                     }
 
                     last = x;
@@ -277,7 +253,7 @@ impl Cubic {
         }
     }
 
-    fn all_roots_term<Term: TerminationCondition>(
+    pub(crate) fn all_roots_term<Term: TerminationCondition>(
         self,
         lower: f64,
         upper: f64,
