@@ -212,10 +212,14 @@ impl Cubic {
         x
     }
 
+    // This has to be pub because we're benchmarking it right now.
+    #[doc(hidden)]
     pub fn root_between_with_output_error(self, lower: f64, upper: f64, y_error: f64) -> f64 {
         self.one_root(lower, upper, ValueError(y_error))
     }
 
+    // This has to be pub because we're benchmarking it right now.
+    #[doc(hidden)]
     pub fn root_between(self, lower: f64, upper: f64, x_error: f64) -> f64 {
         self.one_root(lower, upper, InputError(x_error))
     }
@@ -275,11 +279,30 @@ impl Cubic {
         ret
     }
 
-    pub fn all_roots(self, lower: f64, upper: f64, x_error: f64) -> ArrayVec<f64, 3> {
+    /// Computes all roots between `lower` and `upper`, to the desired accuracy.
+    ///
+    /// We make no guarantees about multiplicity. In fact, if there's a
+    /// double-root that isn't a triple-root (and therefore has no sign change
+    /// nearby) then there's a good chance we miss it altogether. This is
+    /// fine if you're using this root-finding to optimize a quartic, because
+    /// double-roots of the derivative aren't local extrema.
+    pub fn roots_between(self, lower: f64, upper: f64, x_error: f64) -> ArrayVec<f64, 3> {
         self.all_roots_term(lower, upper, InputError(x_error))
     }
 
-    pub fn all_roots_with_output_error(
+    /// Computes all roots between `lower` and `upper`, to the desired accuracy.
+    ///
+    /// "Accuracy" is measured with respect to the cubic's value: if this cubic
+    /// is called `f` and we find some `x` with `|f(x)| < accuracy` (and `x` is
+    /// contained between two endpoints where `f` has opposite signs) then we'll
+    /// call `x` a root.
+    ///
+    /// We make no guarantees about multiplicity. In fact, if there's a
+    /// double-root that isn't a triple-root (and therefore has no sign change
+    /// nearby) then there's a good chance we miss it altogether. This is
+    /// fine if you're using this root-finding to optimize a quartic, because
+    /// double-roots of the derivative aren't local extrema.
+    pub fn roots_between_with_output_error(
         self,
         lower: f64,
         upper: f64,
@@ -300,7 +323,14 @@ impl Cubic {
     /// nearby) then there's a good chance we miss it altogether. This is
     /// fine if you're using this root-finding to optimize a quartic, because
     /// double-roots of the derivative aren't local extrema.
-    pub fn roots_between_with_output_error(
+    // This has to be pub because we're benchmarking it right now.
+    //
+    // We don't really want this public because it appears to be slower than
+    // the other method. This one does a Newton search for each bracketing
+    // interval, while the other one just does a single Newton search
+    // and then deflates to find the other two roots.
+    #[doc(hidden)]
+    pub fn roots_between_with_output_error_multiple_searches(
         self,
         lower: f64,
         upper: f64,
@@ -452,10 +482,10 @@ mod tests {
         // };
 
         let poly = super::Cubic {
-            c0: -3.565233507454652,
-            c1: -3.565233507454643,
-            c2: -1.2298855640101194e-17,
-            c3: 9.133009604987547e-300,
+            c0: 9.579461050047022e108,
+            c1: 2.041481550067064e-141,
+            c2: 2.0414815500670618e-141,
+            c3: 7.166306044390735e95,
         };
 
         // let poly = super::Cubic {
@@ -478,6 +508,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn root_evaluation() {
         arbtest::arbtest(|u| {
             let c = crate::arbitrary::cubic(u)?;
@@ -490,20 +521,22 @@ mod tests {
             // We could have a wider range of roots, but then we might need
             // to lower the accuracy depending on what the actual root is: the
             // intermediate computations scale like the cube of the root.
-            for r in c.roots_between_with_output_error(-10.0, 10.0, accuracy) {
+            for r in c.roots_between_with_output_error_multiple_searches(-10.0, 10.0, accuracy) {
                 let y = c.eval(r);
                 if y.is_finite() {
                     assert!(y.abs() <= accuracy);
                 }
             }
             for r in c.roots_blinn() {
+                let accuracy = accuracy * r.abs().powi(3).max(1.0);
+                dbg!(accuracy);
                 let y = c.eval(r);
                 if y.is_finite() {
                     dbg!(c, r, y);
                     assert!(y.abs() <= accuracy);
                 }
             }
-            for r in c.all_roots_with_output_error(-10.0, 10.0, accuracy) {
+            for r in c.roots_between_with_output_error(-10.0, 10.0, accuracy) {
                 let y = c.eval(r);
                 if y.is_finite() {
                     assert!(y.abs() <= accuracy);

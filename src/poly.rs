@@ -1,3 +1,5 @@
+//! Polynomials of dynamic (run-time) degree.
+
 use crate::{Cubic, InputError, TerminationCondition, different_signs};
 
 /// A polynomial of dynamic degree.
@@ -89,7 +91,7 @@ impl Poly {
     }
 
     /// If this polynomial has degree 3 or less, converts it to a [cubic](crate::Cubic).
-    pub fn to_cubic(&self) -> Option<Cubic> {
+    fn to_cubic(&self) -> Option<Cubic> {
         if self.degree() <= 3 {
             Some(Cubic {
                 c0: self.coeffs.first().copied().unwrap_or(0.0),
@@ -170,31 +172,59 @@ impl Poly {
     /// - run time is quadratic in the degree. However, it is often very fast
     ///   in practice for polynomials of low degree, especially if the interval
     ///   `[lower, upper]` contains few roots.
-    pub fn roots_in(&self, lower: f64, upper: f64, x_error: f64) -> Vec<f64> {
+    pub fn roots_between(&self, lower: f64, upper: f64, x_error: f64) -> Vec<f64> {
         let mut ret = Vec::new();
+        let mut scratch = Vec::new();
+        self.roots_between_with_buffer(lower, upper, x_error, &mut ret, &mut scratch);
+        ret
+    }
+
+    /// Finds all the roots in an interval, using Yuksel's algorithm.
+    ///
+    /// See [`Poly::roots_between`] for more details. This method differs from that
+    /// one in that it performs fewer allocations: you provide an `out` buffer
+    /// for the result and a `scratch` buffer for intermediate computations.
+    pub fn roots_between_with_buffer(
+        &self,
+        lower: f64,
+        upper: f64,
+        x_error: f64,
+        out: &mut Vec<f64>,
+        scratch: &mut Vec<f64>,
+    ) {
+        out.clear();
+        scratch.clear();
 
         if let Some(c) = self.to_cubic() {
-            ret.extend(c.all_roots(lower, upper, x_error));
-            return ret;
+            out.extend(c.roots_between(lower, upper, x_error));
+            return;
         }
 
         let deriv = self.deriv();
-        let mut possible_endpoints = deriv.roots_in(lower, upper, x_error);
-        possible_endpoints.push(upper);
+        deriv.roots_between_with_buffer(lower, upper, x_error, scratch, out);
+        scratch.push(upper);
+        out.clear();
         let mut last = lower;
         let mut last_val = self.eval(last);
-        for x in possible_endpoints {
+
+        // `scratch` now contains all the critical points (in increasing order)
+        // and the upper endpoint of the interval. If we throw away all the
+        // critical points that are outside of (lower, upper), the things
+        // remaining in `scratch` are the endpoints of the potential bracketing
+        // intervals of our polynomial. So by filtering out uninteresting
+        // critical points, this loop is iterating over potential bracketing
+        // intervals.
+        for &mut x in scratch {
             if x > last && x <= upper {
                 let val = self.eval(x);
                 if different_signs(last_val, val) {
-                    ret.push(self.one_root(&deriv, last, x, last_val, val, InputError(x_error)));
+                    out.push(self.one_root(&deriv, last, x, last_val, val, InputError(x_error)));
                 }
 
                 last = x;
                 last_val = val;
             }
         }
-        ret
     }
 }
 
@@ -211,7 +241,7 @@ mod tests {
 
         let p = &x_minus_1 * &x_minus_2 * &x_minus_3 * &x_minus_4;
 
-        let roots = p.roots_in(0.0, 5.0, 1e-6);
+        let roots = p.roots_between(0.0, 5.0, 1e-6);
         assert_eq!(roots.len(), 4);
         assert!((roots[0] - 1.0).abs() <= 1e-6);
         assert!((roots[1] - 2.0).abs() <= 1e-6);
