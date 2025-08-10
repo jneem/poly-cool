@@ -11,6 +11,9 @@ mod quadratic;
 #[cfg(any(test, feature = "arbitrary"))]
 pub mod arbitrary;
 
+#[cfg(any(test, feature = "dashu-float"))]
+pub mod accurate;
+
 // Cubic and Quadratic are used in benches so they have to be public.
 // We haven't actually put any thought into their API yet, though.
 #[doc(hidden)]

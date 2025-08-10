@@ -130,7 +130,7 @@ impl Poly {
                 lower = x;
             }
 
-            let deriv_x = self.deriv().eval(x);
+            let deriv_x = deriv.eval(x);
             debug_assert!(deriv_x.is_finite());
             debug_assert!(val_x.is_finite());
 
