@@ -50,6 +50,10 @@ impl Poly {
         }
     }
 
+    pub fn coeffs(&self) -> &[f64] {
+        &self.coeffs
+    }
+
     fn is_finite(&self) -> bool {
         self.coeffs.iter().all(|c| c.is_finite())
     }

@@ -1,8 +1,10 @@
 use dashu_float::{
     FBig,
     ops::{Abs, SquareRoot},
-    round::{Rounded, mode::Up},
+    round::{Round, Rounded, mode::Up},
 };
+
+use crate::{Cubic, Poly};
 
 #[derive(Clone, Debug)]
 pub struct AccuPoly {
@@ -37,6 +39,24 @@ fn exact(x: f64) -> FBig {
         unreachable!()
     };
     x
+}
+
+// Overflow-proof midpoint between two numbers.
+fn midpoint(x: f64, y: f64) -> f64 {
+    if (x > 0.0) == (y > 0.0) {
+        x + (y - x) / 2.0
+    } else {
+        (x + y) / 2.0
+    }
+}
+
+fn round<RoundingMode: Round>(x: FBig<RoundingMode>, precision: usize) -> FBig<RoundingMode> {
+    // Work around the bug with arbitrary precision (i.e. precision == 0)
+    // numbers don't get rounded by `with_precision`.
+    x.with_precision(precision + 1)
+        .value()
+        .with_precision(precision)
+        .value()
 }
 
 fn finite_f64(x: &FBig) -> bool {
@@ -92,15 +112,23 @@ impl AccuPoly {
         }
     }
 
+    /// Evaluate this polynomial at the given point, as a correctly-rounded
+    /// `f64`.
     pub fn eval(&self, x: f64) -> f64 {
         self.eval_exact(x).to_f64().value()
     }
 
+    /// Evaluate this polynomial at the given point, exactly.
     pub fn eval_exact(&self, x: f64) -> FBig {
         let x = exact(x);
         let mut power = exact(1.0);
         let mut ret = exact(0.0);
 
+        // We're doing this in arbitrary precision, which is hilariously
+        // inefficient if the coefficients have very different magnitudes.
+        // But it's obviously correct, and if we were constructed from `f64`s
+        // (which have only 11 exponent bits) then we're wasting a few kilobytes
+        // at most.
         for c in &self.coeffs {
             ret += &power * c;
             power *= &x;
@@ -117,50 +145,63 @@ impl AccuPoly {
     }
 
     pub fn roots(&self) -> Vec<f64> {
-        if self.coeffs.len() < 3 {
-            unimplemented!()
-        } else if self.coeffs.len() == 3 {
-            if let Some((r0, r1)) =
-                quadratic_roots(&self.coeffs[2], &self.coeffs[1], &self.coeffs[0])
-            {
-                let mut ret = Vec::new();
-                if finite_f64(&r0) {
-                    ret.push(r0.to_f64().value());
+        match self.coeffs.len() {
+            0..2 => Vec::new(),
+            2 => {
+                let root = -round(self.coeffs[0].clone(), 128) / round(self.coeffs[1].clone(), 256);
+                if finite_f64(&root) {
+                    vec![root.to_f64().value()]
+                } else {
+                    Vec::new()
                 }
-                if finite_f64(&r1) {
-                    ret.push(r1.to_f64().value());
-                }
-                ret
-            } else {
-                Vec::new()
             }
-        } else {
-            let bound = self.effective_domain_bounds();
-            let (lower, upper) = if finite_f64(&bound) {
-                (-bound.to_f64().value(), bound.to_f64().value())
-            } else {
-                (f64::MIN, f64::MAX)
-            };
-            let deriv = self.deriv();
-            let mut crits: Vec<f64> = deriv.roots();
-            crits.push(upper);
-            let mut x0 = lower;
-            let mut x0_val = self.eval_exact(x0);
-            let mut out = Vec::new();
-            for x1 in crits {
-                let x1_val = self.eval_exact(x1);
-                if x0_val.sign() != x1_val.sign() {
-                    out.push(self.one_root(&deriv, x0, x1));
+            3 => {
+                if let Some((r0, r1)) =
+                    quadratic_roots(&self.coeffs[2], &self.coeffs[1], &self.coeffs[0])
+                {
+                    let mut ret = Vec::new();
+                    if finite_f64(&r0) {
+                        ret.push(r0.to_f64().value());
+                    }
+                    if finite_f64(&r1) {
+                        ret.push(r1.to_f64().value());
+                    }
+                    ret
+                } else {
+                    Vec::new()
                 }
-                x0 = x1;
-                x0_val = x1_val;
             }
-            out
+            _ => {
+                let bound = self.effective_domain_bounds();
+                let (lower, upper) = if finite_f64(&bound) {
+                    (-bound.to_f64().value(), bound.to_f64().value())
+                } else {
+                    (f64::MIN, f64::MAX)
+                };
+                let deriv = self.deriv();
+                let mut crits: Vec<f64> = deriv.roots();
+                crits.push(upper);
+                let mut x0 = lower;
+                let mut x0_val = self.eval_exact(x0);
+                let mut out = Vec::new();
+                for x1 in crits {
+                    let x1_val = self.eval_exact(x1);
+                    if x0_val.sign() != x1_val.sign() {
+                        out.push(self.one_root(&deriv, x0, x1));
+                    }
+                    x0 = x1;
+                    x0_val = x1_val;
+                }
+                out
+            }
         }
     }
 
     // Returns a number x such that all roots of this polynomial
     // must lie in the interval [-x, x].
+    //
+    // TODO: also, make sure the result is small enough so that the polynomial
+    // is finite (in f64) on the range.
     fn effective_domain_bounds(&self) -> FBig {
         let mut x = exact(0.0);
         let factor = exact(self.coeffs.len().saturating_sub(1) as f64).with_rounding();
@@ -170,18 +211,19 @@ impl AccuPoly {
         let highest_order_coeff = highest_order_coeff.abs().with_rounding();
 
         for coeff in self.coeffs.iter().rev().skip(1) {
-            let coeff: FBig<Up> = coeff
-                .clone()
-                .abs()
-                .with_rounding()
-                .with_precision(128)
-                .value();
+            let coeff: FBig<Up> = round(coeff.clone().abs().with_rounding(), 128);
             let bound = (coeff / &highest_order_coeff) * &factor;
             x = x.max(bound.with_rounding());
         }
         x
     }
 
+    // Given a bracketing interval, returns a root.
+    //
+    // The return value is guaranteed to either be a root (in the sense that
+    // correctly-rounded exact evaluation of the polynomial gives zero) or be
+    // just below a root (in the sense that evaluation of the returned value
+    // has a different sign as evaluation of the next float larger tha it).
     fn one_root(&self, deriv: &AccuPoly, mut lower: f64, mut upper: f64) -> f64 {
         let val_lower = self.eval_exact(lower);
         let val_upper = self.eval_exact(upper);
@@ -190,7 +232,7 @@ impl AccuPoly {
         debug_assert!(val_upper.repr().is_finite());
         debug_assert!(val_lower.sign() != val_upper.sign());
 
-        let mut x = lower + (upper - lower) / 2.0;
+        let mut x = midpoint(lower, upper);
         let mut val_x = self.eval_exact(x);
         let zero = exact(0.0);
 
@@ -211,7 +253,7 @@ impl AccuPoly {
             // in the quadratic formula...
             // TODO: unsure how to choose the precision here. If we don't have enough, there
             // are assertion errors in dashu-float...
-            let step = (-val_x.with_precision(128).value() / deriv_x.with_precision(256).value())
+            let step = (-round(val_x.clone(), 128) / round(deriv_x, 256))
                 .with_precision(0)
                 .value();
             let mut new_x = (exact(x) + &step).to_f64().value();
@@ -220,12 +262,57 @@ impl AccuPoly {
                 new_x = lower + (upper - lower) / 2.0;
             }
             if new_x == x {
-                return new_x;
+                break;
             }
             x = new_x;
             val_x = self.eval_exact(x);
         }
-        x
+
+        let mut val_x = val_x.to_f64().value();
+        if val_x != 0.0 {
+            // Do a linear search among `f64`s to find the exact root.
+            // FIXME: sometimes this takes too long. I'm not sure why the
+            // Newton stops...
+            let root_in_first_half = (val_lower > zero) != (val_x > 0.0);
+            //dbg!(root_in_first_half);
+            if root_in_first_half {
+                let mut prev_x = x.next_down();
+                let mut val_prev_x = self.eval(prev_x);
+                //dbg!(x, val_x, prev_x, val_prev_x);
+                while val_prev_x != 0.0 && val_prev_x.signum() == val_x.signum() {
+                    dbg!(x, val_x, prev_x, val_prev_x);
+                    x = prev_x;
+                    val_x = val_prev_x;
+                    prev_x = x.next_down();
+                    val_prev_x = self.eval(prev_x);
+                }
+                return prev_x;
+            } else {
+                let mut next_x = x.next_up();
+                let mut val_next_x = self.eval(next_x);
+                while val_x != 0.0 && val_next_x.signum() == val_x.signum() {
+                    dbg!(x, val_x, next_x, val_next_x);
+                    x = next_x;
+                    val_x = val_next_x;
+                    next_x = x.next_up();
+                    val_next_x = self.eval(next_x)
+                }
+                return x;
+            }
+        }
+        dbg!(x)
+    }
+}
+
+impl From<Poly> for AccuPoly {
+    fn from(p: Poly) -> AccuPoly {
+        AccuPoly::new(p.coeffs().iter().copied())
+    }
+}
+
+impl From<Cubic> for AccuPoly {
+    fn from(p: Cubic) -> AccuPoly {
+        AccuPoly::new([p.c0, p.c1, p.c2, p.c3])
     }
 }
 
@@ -234,7 +321,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn quadratic_roots() {
+    fn linear_roots_once() {
+        let x_minus_one = AccuPoly::new([-1.0, 1.0]);
+        assert_eq!(x_minus_one.roots(), vec![1.0]);
+    }
+
+    #[test]
+    fn quadratic_roots_once() {
         let x_minus_one = AccuPoly::new([-1.0, 1.0]);
         let x_minus_two = AccuPoly::new([-2.0, 1.0]);
         let p = &x_minus_one * &x_minus_two;
@@ -245,7 +338,7 @@ mod tests {
     }
 
     #[test]
-    fn cubic_roots() {
+    fn cubic_roots_once() {
         let x_minus_one = AccuPoly::new([-1.0, 1.0]);
         let x_minus_two = AccuPoly::new([-2.0, 1.0]);
         let x_minus_three = AccuPoly::new([-3.0, 1.0]);
@@ -254,12 +347,31 @@ mod tests {
     }
 
     #[test]
-    fn quadric_roots() {
+    fn quadric_roots_once() {
         let x_minus_one = AccuPoly::new([-1.0, 1.0]);
         let x_minus_two = AccuPoly::new([-2.0, 1.0]);
         let x_minus_three = AccuPoly::new([-3.0, 1.0]);
         let x_minus_four = AccuPoly::new([-4.0, 1.0]);
         let p = &x_minus_one * &x_minus_two * &x_minus_three * &x_minus_four;
         assert_eq!(p.roots(), vec![1.0, 2.0, 3.0, 4.0]);
+    }
+
+    #[test]
+    fn cubic_roots() {
+        arbtest::arbtest(|u| {
+            let c: AccuPoly = crate::arbitrary::cubic(u)?.into();
+            for r in c.roots() {
+                let val = c.eval(r);
+                let next_val = c.eval(r.next_up());
+                //dbg!(&c, r, val, next_val);
+                assert!(val == 0.0 || (next_val != 0.0 && val.signum() != next_val.signum()));
+            }
+            Ok(())
+        })
+        //.seed(0xfe5fea2200000028);
+        //.seed(0x76b66cbb00000020);
+        //.seed(0x3034152d00003215);
+        //.seed(0xdb4f193500000060);
+        .budget_ms(5_000);
     }
 }
