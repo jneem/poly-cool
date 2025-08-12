@@ -185,6 +185,10 @@ impl AccuPoly {
                 let mut x0_val = self.eval_exact(x0);
                 let mut out = Vec::new();
                 for x1 in crits {
+                    if x1 <= x0 {
+                        continue;
+                    }
+
                     let x1_val = self.eval_exact(x1);
                     if x0_val.sign() != x1_val.sign() {
                         out.push(self.one_root(&deriv, x0, x1));
@@ -225,6 +229,7 @@ impl AccuPoly {
     // just below a root (in the sense that evaluation of the returned value
     // has a different sign as evaluation of the next float larger tha it).
     fn one_root(&self, deriv: &AccuPoly, mut lower: f64, mut upper: f64) -> f64 {
+        debug_assert!(lower < upper);
         let val_lower = self.eval_exact(lower);
         let val_upper = self.eval_exact(upper);
 
@@ -236,6 +241,8 @@ impl AccuPoly {
         let mut val_x = self.eval_exact(x);
         let zero = exact(0.0);
 
+        assert!(x >= lower);
+        assert!(x <= upper);
         while val_x != zero {
             let root_in_first_half = val_lower.sign() != val_x.sign();
             if root_in_first_half {
@@ -253,13 +260,13 @@ impl AccuPoly {
             // in the quadratic formula...
             // TODO: unsure how to choose the precision here. If we don't have enough, there
             // are assertion errors in dashu-float...
-            let step = (-round(val_x.clone(), 128) / round(deriv_x, 256))
+            let step = (-round(val_x.clone(), 128) / round(deriv_x.clone(), 256))
                 .with_precision(0)
                 .value();
             let mut new_x = (exact(x) + &step).to_f64().value();
 
             if new_x <= lower || new_x >= upper {
-                new_x = lower + (upper - lower) / 2.0;
+                new_x = midpoint(lower, upper);
             }
             if new_x == x {
                 break;
@@ -269,6 +276,8 @@ impl AccuPoly {
         }
 
         let mut val_x = val_x.to_f64().value();
+        // dbg!(lower, x, upper);
+        // dbg!(val_x, &val_lower, &val_upper);
         if val_x != 0.0 {
             // Do a linear search among `f64`s to find the exact root.
             // FIXME: sometimes this takes too long. I'm not sure why the
@@ -279,7 +288,12 @@ impl AccuPoly {
                 let mut prev_x = x.next_down();
                 let mut val_prev_x = self.eval(prev_x);
                 //dbg!(x, val_x, prev_x, val_prev_x);
+                let mut count = 0;
                 while val_prev_x != 0.0 && val_prev_x.signum() == val_x.signum() {
+                    count += 1;
+                    if count > 32 {
+                        panic!();
+                    }
                     dbg!(x, val_x, prev_x, val_prev_x);
                     x = prev_x;
                     val_x = val_prev_x;
@@ -290,12 +304,20 @@ impl AccuPoly {
             } else {
                 let mut next_x = x.next_up();
                 let mut val_next_x = self.eval(next_x);
+                let mut count = 0;
                 while val_x != 0.0 && val_next_x.signum() == val_x.signum() {
-                    dbg!(x, val_x, next_x, val_next_x);
+                    //dbg!(x, val_x, next_x, val_next_x);
+                    count += 1;
+                    if count > 32 {
+                        panic!();
+                    }
                     x = next_x;
                     val_x = val_next_x;
                     next_x = x.next_up();
                     val_next_x = self.eval(next_x)
+                }
+                if val_x != 0.0 && val_next_x == 0.0 {
+                    return next_x;
                 }
                 return x;
             }
@@ -372,6 +394,8 @@ mod tests {
         //.seed(0x76b66cbb00000020);
         //.seed(0x3034152d00003215);
         //.seed(0xdb4f193500000060);
-        .budget_ms(5_000);
+        //.seed(0xe2a4a0d300010000);
+        //.seed(0xd440507e00010000);
+        .budget_ms(10_000);
     }
 }
