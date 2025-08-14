@@ -1,3 +1,5 @@
+//! Accurate-but-slow root finding using arbitrary-precision arithmetic.
+
 use dashu_float::{
     FBig,
     ops::{Abs, SquareRoot},
@@ -118,21 +120,24 @@ impl AccuPoly {
         self.eval_exact(x).to_f64().value()
     }
 
-    /// Evaluate this polynomial at the given point, exactly.
+    /// Evaluate this polynomial at the given point, exactly and very slowly.
     pub fn eval_exact(&self, x: f64) -> FBig {
-        let x = exact(x);
-        let mut power = exact(1.0);
-        let mut ret = exact(0.0);
-
         // We're doing this in arbitrary precision, which is hilariously
         // inefficient if the coefficients have very different magnitudes.
         // But it's obviously correct, and if we were constructed from `f64`s
         // (which have only 11 exponent bits) then we're wasting a few kilobytes
         // at most.
-        for c in &self.coeffs {
-            ret += &power * c;
-            power *= &x;
+        let mut coeffs = self.coeffs.iter().rev();
+        let Some(c) = coeffs.next() else {
+            return exact(0.0);
+        };
+        let mut ret = c.clone();
+        let x = exact(x);
+        for c in coeffs {
+            ret *= &x;
+            ret += c;
         }
+
         ret
     }
 
@@ -191,7 +196,7 @@ impl AccuPoly {
 
                     let x1_val = self.eval_exact(x1);
                     if x0_val.sign() != x1_val.sign() {
-                        out.push(self.one_root(&deriv, x0, x1));
+                        out.push(self.one_root(&deriv, x0, x1, &x0_val, &x1_val));
                     }
                     x0 = x1;
                     x0_val = x1_val;
@@ -228,11 +233,15 @@ impl AccuPoly {
     // correctly-rounded exact evaluation of the polynomial gives zero) or be
     // just below a root (in the sense that evaluation of the returned value
     // has a different sign as evaluation of the next float larger tha it).
-    fn one_root(&self, deriv: &AccuPoly, mut lower: f64, mut upper: f64) -> f64 {
+    fn one_root(
+        &self,
+        deriv: &AccuPoly,
+        mut lower: f64,
+        mut upper: f64,
+        val_lower: &FBig,
+        val_upper: &FBig,
+    ) -> f64 {
         debug_assert!(lower < upper);
-        let val_lower = self.eval_exact(lower);
-        let val_upper = self.eval_exact(upper);
-
         debug_assert!(val_lower.repr().is_finite());
         debug_assert!(val_upper.repr().is_finite());
         debug_assert!(val_lower.sign() != val_upper.sign());
@@ -255,11 +264,6 @@ impl AccuPoly {
             debug_assert!(deriv_x.repr().is_finite());
             debug_assert!(val_x.repr().is_finite());
 
-            // TODO: maybe rational is better than float, since we need to divide
-            // in a few places? We'd have to figure out what to do with the sqrt
-            // in the quadratic formula...
-            // TODO: unsure how to choose the precision here. If we don't have enough, there
-            // are assertion errors in dashu-float...
             let step = (-round(val_x.clone(), 128) / round(deriv_x.clone(), 256))
                 .with_precision(0)
                 .value();
@@ -276,25 +280,13 @@ impl AccuPoly {
         }
 
         let mut val_x = val_x.to_f64().value();
-        // dbg!(lower, x, upper);
-        // dbg!(val_x, &val_lower, &val_upper);
         if val_x != 0.0 {
             // Do a linear search among `f64`s to find the exact root.
-            // FIXME: sometimes this takes too long. I'm not sure why the
-            // Newton stops...
-            let root_in_first_half = (val_lower > zero) != (val_x > 0.0);
-            //dbg!(root_in_first_half);
+            let root_in_first_half = (val_lower > &zero) != (val_x > 0.0);
             if root_in_first_half {
                 let mut prev_x = x.next_down();
                 let mut val_prev_x = self.eval(prev_x);
-                //dbg!(x, val_x, prev_x, val_prev_x);
-                let mut count = 0;
                 while val_prev_x != 0.0 && val_prev_x.signum() == val_x.signum() {
-                    count += 1;
-                    if count > 32 {
-                        panic!();
-                    }
-                    dbg!(x, val_x, prev_x, val_prev_x);
                     x = prev_x;
                     val_x = val_prev_x;
                     prev_x = x.next_down();
@@ -304,13 +296,7 @@ impl AccuPoly {
             } else {
                 let mut next_x = x.next_up();
                 let mut val_next_x = self.eval(next_x);
-                let mut count = 0;
                 while val_x != 0.0 && val_next_x.signum() == val_x.signum() {
-                    //dbg!(x, val_x, next_x, val_next_x);
-                    count += 1;
-                    if count > 32 {
-                        panic!();
-                    }
                     x = next_x;
                     val_x = val_next_x;
                     next_x = x.next_up();
@@ -322,7 +308,7 @@ impl AccuPoly {
                 return x;
             }
         }
-        dbg!(x)
+        x
     }
 }
 
@@ -385,17 +371,10 @@ mod tests {
             for r in c.roots() {
                 let val = c.eval(r);
                 let next_val = c.eval(r.next_up());
-                //dbg!(&c, r, val, next_val);
                 assert!(val == 0.0 || (next_val != 0.0 && val.signum() != next_val.signum()));
             }
             Ok(())
         })
-        //.seed(0xfe5fea2200000028);
-        //.seed(0x76b66cbb00000020);
-        //.seed(0x3034152d00003215);
-        //.seed(0xdb4f193500000060);
-        //.seed(0xe2a4a0d300010000);
-        //.seed(0xd440507e00010000);
         .budget_ms(10_000);
     }
 }

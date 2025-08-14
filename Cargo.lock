@@ -362,6 +362,7 @@ dependencies = [
  "arbtest",
  "arrayvec",
  "criterion",
+ "dashu-base",
  "dashu-float",
  "kurbo",
 ]
