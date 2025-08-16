@@ -9,20 +9,29 @@ pub fn cubic_roots(c: &mut Criterion) {
         c0: -6.0,
     };
 
-    c.bench_function("roots_between_multiple_searches", |b| {
+    let mut group = c.benchmark_group("simple roots");
+
+    group.bench_function("roots_between_multiple_searches", |b| {
         b.iter(|| black_box(poly).roots_between_multiple_searches(-1.0, 4.0, 1e-12))
     });
-    c.bench_function("roots_between", |b| {
-        b.iter(|| black_box(poly).roots_between(-1.0, 4.0, 1e-12))
-    });
-    c.bench_function("roots_between with one root", |b| {
+    for accuracy in [1e-6, 1e-8, 1e-12] {
+        group.bench_with_input(
+            format!("roots_between {accuracy:?}"),
+            &accuracy,
+            |b, accuracy| b.iter(|| black_box(poly).roots_between(-1.0, 4.0, *accuracy)),
+        );
+    }
+    group.bench_function("roots_between with one root", |b| {
         b.iter(|| black_box(poly).roots_between(-1.0, 1.5, 1e-12))
     });
-    c.bench_function("roots_blinn", |b| b.iter(|| black_box(poly).roots_blinn()));
-    c.bench_function("roots_blinn_and_deflate", |b| {
+    group.bench_function("roots_blinn", |b| b.iter(|| black_box(poly).roots_blinn()));
+    group.bench_function("roots_blinn with preconditioning", |b| {
+        b.iter(|| black_box(poly).precondition().roots_blinn())
+    });
+    group.bench_function("roots_blinn_and_deflate", |b| {
         b.iter(|| black_box(poly).roots_blinn_and_deflate())
     });
-    c.bench_function("kurbo", |b| {
+    group.bench_function("kurbo", |b| {
         b.iter(|| {
             kurbo::common::solve_cubic(
                 black_box(poly.c0),
@@ -31,6 +40,16 @@ pub fn cubic_roots(c: &mut Criterion) {
                 black_box(poly.c3),
             )
         })
+    });
+
+    let poly = poly_cool::Cubic {
+        c3: 1.0,
+        c2: -6.0,
+        c1: 11.0,
+        c0: -100.0,
+    };
+    group.bench_function("roots_blinn with one root", |b| {
+        b.iter(|| black_box(poly).roots_blinn())
     });
 }
 

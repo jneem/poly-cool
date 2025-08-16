@@ -237,7 +237,8 @@ impl Cubic {
         ret
     }
 
-    fn precondition(&self) -> Cubic {
+    #[doc(hidden)]
+    pub fn precondition(&self) -> Cubic {
         // Truncate coefficients too close to zero, to ensure that there's
         // no underflow when calculating the discriminant.
         let min_coeff = 2.0f64.powi(-256);
@@ -339,7 +340,7 @@ impl Cubic {
                 let (sin_theta, cos_theta) = theta.sin_cos();
                 //dbg!(theta, cos_theta);
                 let tilde_x_1 = 2.0 * sqrt_c * cos_theta;
-                let tilde_x_3 = sqrt_c * (-theta.cos() - 3.0f64.sqrt() * sin_theta);
+                let tilde_x_3 = sqrt_c * (-cos_theta - 3.0f64.sqrt() * sin_theta);
                 (tilde_x_1, tilde_x_3)
             }
 
