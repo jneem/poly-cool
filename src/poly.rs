@@ -1,6 +1,6 @@
 //! Polynomials of dynamic (run-time) degree.
 
-use crate::{Cubic, InputError, TerminationCondition, different_signs};
+use crate::{Cubic, different_signs, yuksel};
 
 /// A polynomial of dynamic degree.
 ///
@@ -108,60 +108,6 @@ impl Poly {
         }
     }
 
-    fn one_root<Term: TerminationCondition>(
-        &self,
-        deriv: &Poly,
-        mut lower: f64,
-        mut upper: f64,
-        val_lower: f64,
-        val_upper: f64,
-        term: Term,
-    ) -> f64 {
-        if !val_lower.is_finite() || !val_upper.is_finite() || !deriv.is_finite() {
-            return f64::NAN;
-        }
-        debug_assert!(different_signs(val_lower, val_upper));
-
-        let mut x = lower + (upper - lower) / 2.0;
-        let mut val_x = self.eval(x);
-        let mut step = (upper - lower) / 2.0;
-
-        while x.is_finite() && !term.stop(step, val_x) {
-            let root_in_first_half = different_signs(val_lower, val_x);
-            if root_in_first_half {
-                upper = x;
-            } else {
-                lower = x;
-            }
-
-            let deriv_x = deriv.eval(x);
-            debug_assert!(deriv_x.is_finite());
-            debug_assert!(val_x.is_finite());
-
-            step = -val_x / deriv_x;
-            let mut new_x = x + step;
-
-            if new_x <= lower || new_x >= upper {
-                new_x = lower + (upper - lower) / 2.0;
-
-                if new_x == upper || new_x == lower {
-                    // This should be rare, but it happens if they ask for more
-                    // accuracy than is reasonable. For example, suppse (because
-                    // of large coefficients) the output value jumps from -1.0
-                    // to 1.0 between adjacent floats and they ask for an output
-                    // error of smaller than 0.5. Then we'll eventually shrink
-                    // the search interval to a pair of adjacent floats and hit
-                    // this case.
-                    return new_x;
-                }
-            }
-            step = new_x - x;
-            x = new_x;
-            val_x = self.eval(x);
-        }
-        x
-    }
-
     /// Finds all the roots in an interval, using Yuksel's algorithm.
     ///
     /// This is a numerical, iterative method. It first constructs critical
@@ -205,6 +151,9 @@ impl Poly {
         }
 
         let deriv = self.deriv();
+        if !deriv.is_finite() {
+            return;
+        }
         deriv.roots_between_with_buffer(lower, upper, x_error, scratch, out);
         scratch.push(upper);
         out.clear();
@@ -222,7 +171,15 @@ impl Poly {
             if x > last && x <= upper {
                 let val = self.eval(x);
                 if different_signs(last_val, val) {
-                    out.push(self.one_root(&deriv, last, x, last_val, val, InputError(x_error)));
+                    out.push(yuksel::find_root(
+                        |x| self.eval(x),
+                        |x| deriv.eval(x),
+                        last,
+                        x,
+                        last_val,
+                        val,
+                        x_error,
+                    ));
                 }
 
                 last = x;

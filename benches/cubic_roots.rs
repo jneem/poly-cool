@@ -9,19 +9,18 @@ pub fn cubic_roots(c: &mut Criterion) {
         c0: -6.0,
     };
 
-    c.bench_function("us", |b| {
-        b.iter(|| {
-            black_box(poly).roots_between_with_output_error_multiple_searches(-1.0, 4.0, 1e-12)
-        })
+    c.bench_function("roots_between_multiple_searches", |b| {
+        b.iter(|| black_box(poly).roots_between_multiple_searches(-1.0, 4.0, 1e-12))
     });
-    c.bench_function("us deflated", |b| {
-        b.iter(|| black_box(poly).roots_between_with_output_error(-1.0, 4.0, 1e-12))
+    c.bench_function("roots_between", |b| {
+        b.iter(|| black_box(poly).roots_between(-1.0, 4.0, 1e-12))
     });
-    c.bench_function("root_between", |b| {
-        b.iter(|| black_box(poly).root_between(-1.0, 1.5, 1e-12))
+    c.bench_function("roots_between with one root", |b| {
+        b.iter(|| black_box(poly).roots_between(-1.0, 1.5, 1e-12))
     });
-    c.bench_function("root_between_with_output_error", |b| {
-        b.iter(|| black_box(poly).root_between_with_output_error(-1.0, 1.5, 1e-12))
+    c.bench_function("roots_blinn", |b| b.iter(|| black_box(poly).roots_blinn()));
+    c.bench_function("roots_blinn_and_deflate", |b| {
+        b.iter(|| black_box(poly).roots_blinn_and_deflate())
     });
     c.bench_function("kurbo", |b| {
         b.iter(|| {
