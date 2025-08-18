@@ -1,75 +1,8 @@
 use arrayvec::ArrayVec;
 
-use crate::{Quadratic, different_signs};
-
-#[derive(Debug, Copy, Clone)]
-pub struct Cubic {
-    pub c0: f64,
-    pub c1: f64,
-    pub c2: f64,
-    pub c3: f64,
-}
-
-impl std::ops::Div<f64> for Cubic {
-    type Output = Cubic;
-
-    fn div(self, rhs: f64) -> Cubic {
-        Cubic {
-            c0: self.c0 / rhs,
-            c1: self.c1 / rhs,
-            c2: self.c2 / rhs,
-            c3: self.c3 / rhs,
-        }
-    }
-}
-
-impl std::ops::Mul<f64> for Cubic {
-    type Output = Cubic;
-
-    fn mul(self, rhs: f64) -> Cubic {
-        Cubic {
-            c0: self.c0 * rhs,
-            c1: self.c1 * rhs,
-            c2: self.c2 * rhs,
-            c3: self.c3 * rhs,
-        }
-    }
-}
+use crate::{Cubic, different_signs};
 
 impl Cubic {
-    pub fn eval(&self, x: f64) -> f64 {
-        let xx = x * x;
-        let xxx = xx * x;
-        self.c0 + self.c1 * x + self.c2 * xx + self.c3 * xxx
-    }
-
-    pub fn deriv(&self) -> Quadratic {
-        Quadratic {
-            c0: self.c1,
-            c1: 2.0 * self.c2,
-            c2: 3.0 * self.c3,
-        }
-    }
-
-    pub fn max_coeff(&self) -> f64 {
-        self.c0
-            .abs()
-            .max(self.c1.abs())
-            .max(self.c2.abs())
-            .max(self.c3.abs())
-    }
-
-    fn deflate(&self, root: f64) -> Quadratic {
-        let a = self.c3;
-        let b = self.c2 + root * a;
-        let c = self.c1 + root * b;
-        Quadratic {
-            c2: a,
-            c1: b,
-            c0: c,
-        }
-    }
-
     /// Computes the critical points of this cubic, as long
     /// as the discriminant of the derivative is positive.
     /// The return values are in increasing order.
@@ -81,9 +14,9 @@ impl Cubic {
     ///     return +/- infinity as one of the roots.
     ///   - Unless some input is NaN, we don't return NaN.
     fn critical_points(&self) -> Option<(f64, f64)> {
-        let a = 3.0 * self.c3;
-        let b_2 = self.c2;
-        let c = self.c1;
+        let a = 3.0 * self.coeffs[3];
+        let b_2 = self.coeffs[2];
+        let c = self.coeffs[1];
         let disc_4 = b_2 * b_2 - a * c;
 
         if !disc_4.is_finite() {
@@ -256,34 +189,25 @@ impl Cubic {
         let large_coeff = 2.0f64.powi(64);
 
         let mut c = *self;
-        if (self.max_coeff() != 0.0 && self.max_coeff() <= small_coeff)
-            || self.max_coeff() >= large_coeff
+        if (self.magnitude() != 0.0 && self.magnitude() <= small_coeff)
+            || self.magnitude() >= large_coeff
         {
-            c = c / self.max_coeff();
+            c /= self.magnitude();
         }
 
-        truncate(&mut c.c0);
-        truncate(&mut c.c1);
-        truncate(&mut c.c2);
-        truncate(&mut c.c3);
+        truncate(&mut c.coeffs[0]);
+        truncate(&mut c.coeffs[1]);
+        truncate(&mut c.coeffs[2]);
+        truncate(&mut c.coeffs[3]);
         c
-    }
-
-    #[cold]
-    fn roots_blinn_renormalized(&self) -> ArrayVec<f64, 3> {
-        if !self.max_coeff().is_finite() {
-            ArrayVec::new()
-        } else {
-            (*self / 2.0f64.powi(128)).roots_blinn()
-        }
     }
 
     pub fn roots_blinn(&self) -> ArrayVec<f64, 3> {
         let mut ret = ArrayVec::new();
-        let a = self.c3;
-        let b = self.c2 * (1.0 / 3.0);
-        let c = self.c1 * (1.0 / 3.0);
-        let d = self.c0;
+        let a = self.coeffs[3];
+        let b = self.coeffs[2] * (1.0 / 3.0);
+        let c = self.coeffs[1] * (1.0 / 3.0);
+        let d = self.coeffs[0];
 
         let delta_1 = a * c - b * b;
         let delta_2 = a * d - b * c;
@@ -381,10 +305,10 @@ impl Cubic {
 
     pub fn roots_blinn_and_deflate(&self) -> ArrayVec<f64, 3> {
         let mut ret = ArrayVec::new();
-        let a = self.c3;
-        let b = self.c2 * (1.0 / 3.0);
-        let c = self.c1 * (1.0 / 3.0);
-        let d = self.c0;
+        let a = self.coeffs[3];
+        let b = self.coeffs[2] * (1.0 / 3.0);
+        let c = self.coeffs[1] * (1.0 / 3.0);
+        let d = self.coeffs[0];
 
         let delta_1 = a * c - b * b;
         let delta_2 = a * d - b * c;
@@ -483,44 +407,44 @@ mod tests {
 
     const TRICKY_CUBICS: [Cubic; 5] = [
         // This one has infinite discriminant.
-        Cubic {
-            c0: 1.6149620090145706e-94,
-            c1: 1.6149620090145634e-94,
-            c2: 1.6149620090145663e-94,
-            c3: 9.66803867245343e272,
-        },
+        Cubic::new([
+            1.6149620090145706e-94,
+            1.6149620090145634e-94,
+            1.6149620090145663e-94,
+            9.66803867245343e272,
+        ]),
         // This one has a very large second root (-7e202), which causes roots_blinn to NaN on the last one.
         //
         // When deflating, it gives a quadratic that's basically zero and so it underflows the discriminant
         // and ends up reporting just a single root.
-        Cubic {
-            c0: -6.323283382275869e98,
-            c1: 3.0957754283429482e-307,
-            c2: 3.095775428342964e-307,
-            c3: 3.095775428342951e-307,
-        },
+        Cubic::new([
+            -6.323283382275869e98,
+            3.0957754283429482e-307,
+            3.095775428342964e-307,
+            3.095775428342951e-307,
+        ]),
         // Here's one with sane coefficients, but a similar issue as
         // the last one.
-        Cubic {
-            c0: -8.522348907129e-161,
-            c1: 4.471145208374078e-67,
-            c2: -0.052026185927646074,
-            c3: -2.9441090045938734e-57,
-        },
+        Cubic::new([
+            -8.522348907129e-161,
+            4.471145208374078e-67,
+            -0.052026185927646074,
+            -2.9441090045938734e-57,
+        ]),
         // Here's one where the discriminant is numerically zero, causing some stability issues
         // for Blinn.
-        Cubic {
-            c0: -2.5162489269306657e-175,
-            c1: -2.516248926930655e-175,
-            c2: -2.5162489269306522e-175,
-            c3: -0.39205037382350466,
-        },
-        Cubic {
-            c0: -6.428720163649757e103,
-            c1: -6.428720163649766e103,
-            c2: -3.3646756114322413e-74,
-            c3: -3.3646756114322547e-74,
-        },
+        Cubic::new([
+            -2.5162489269306657e-175,
+            -2.516248926930655e-175,
+            -2.5162489269306522e-175,
+            -0.39205037382350466,
+        ]),
+        Cubic::new([
+            -6.428720163649757e103,
+            -6.428720163649766e103,
+            -3.3646756114322413e-74,
+            -3.3646756114322547e-74,
+        ]),
     ];
 
     #[test]
@@ -547,12 +471,12 @@ mod tests {
         //     c2: -3.892738574215212e-288,
         //     c3: 3.0860491510941517e-292,
         // };
-        let poly = Cubic {
-            c0: -6.428720163649757e103,
-            c1: -6.428720163649766e103,
-            c2: -3.3646756114322413e-74,
-            c3: -3.3646756114322547e-74,
-        };
+        let poly = Cubic::new([
+            -6.428720163649757e103,
+            -6.428720163649766e103,
+            -3.3646756114322413e-74,
+            -3.3646756114322547e-74,
+        ]);
 
         let roots = poly.precondition().roots_blinn();
         //let roots = poly.roots_between_multiple_searches(-10.0, 10.0, 1e-12);
@@ -576,7 +500,7 @@ mod tests {
     fn check_root_values(c: &Cubic, roots: &[f64]) {
         // Arbitrary cubics can have coefficients with wild magnitudes,
         // so we need to adjust our error expectations accordingly.
-        let magnitude = c.max_coeff().max(1.0);
+        let magnitude = c.magnitude().max(1.0);
         let accuracy = magnitude * 1e-12;
 
         for r in roots {
@@ -628,13 +552,14 @@ mod tests {
             let c = crate::arbitrary::cubic(u)?;
             // Arbitrary cubics can have coefficients with wild magnitudes,
             // so we need to adjust our error expectations accordingly.
-            let magnitude = c.max_coeff().max(1.0);
+            let magnitude = c.magnitude().max(1.0);
             let accuracy = magnitude * 1e-12;
 
             // We could have a wider range of roots, but then we might need
             // to lower the accuracy depending on what the actual root is: the
             // intermediate computations scale like the cube of the root.
-            for r in kurbo::common::solve_cubic(c.c0, c.c1, c.c2, c.c3) {
+            let &[c0, c1, c2, c3] = c.coeffs();
+            for r in kurbo::common::solve_cubic(c0, c1, c2, c3) {
                 let y = c.eval(r);
                 if y.is_finite() {
                     assert!(y.abs() <= accuracy);

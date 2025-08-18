@@ -6,7 +6,7 @@ use dashu_float::{
     round::{Round, Rounded, mode::Up},
 };
 
-use crate::{Cubic, Poly};
+use crate::{Cubic, PolyDyn};
 
 #[derive(Clone, Debug)]
 pub struct AccuPoly {
@@ -312,15 +312,15 @@ impl AccuPoly {
     }
 }
 
-impl From<Poly> for AccuPoly {
-    fn from(p: Poly) -> AccuPoly {
+impl From<PolyDyn> for AccuPoly {
+    fn from(p: PolyDyn) -> AccuPoly {
         AccuPoly::new(p.coeffs().iter().copied())
     }
 }
 
 impl From<Cubic> for AccuPoly {
     fn from(p: Cubic) -> AccuPoly {
-        AccuPoly::new([p.c0, p.c1, p.c2, p.c3])
+        AccuPoly::new(*p.coeffs())
     }
 }
 

@@ -36,17 +36,17 @@ pub fn quadratic(u: &mut Unstructured<'_>) -> Result<Quadratic, arbitrary::Error
         let c1 = another_finite_float(c2, u)?;
         let c0 = another_finite_float(c1, u)?;
 
-        Ok(Quadratic { c2, c1, c0 })
+        Ok(Quadratic::new([c0, c1, c2]))
     } else {
         let r1 = finite_float(u)?;
         let r2 = another_finite_float(r1, u)?;
         let scale = finite_float(u)?;
 
-        Ok(Quadratic {
-            c2: scale,
-            c1: check_finite(-scale * (r1 + r2))?,
-            c0: check_finite(scale * r1 * r2)?,
-        })
+        Ok(Quadratic::new([
+            check_finite(scale * r1 * r2)?,
+            check_finite(-scale * (r1 + r2))?,
+            scale,
+        ]))
     }
 }
 
@@ -59,7 +59,7 @@ pub fn cubic(u: &mut Unstructured<'_>) -> Result<Cubic, arbitrary::Error> {
         let c1 = another_finite_float(c2, u)?;
         let c0 = another_finite_float(c1, u)?;
 
-        Ok(Cubic { c3, c2, c1, c0 })
+        Ok(Cubic::new([c0, c1, c2, c3]))
     } else {
         // Generate the roots, with a bias towards roots being almost-repeated.
         let r1 = finite_float(u)?;
@@ -67,11 +67,11 @@ pub fn cubic(u: &mut Unstructured<'_>) -> Result<Cubic, arbitrary::Error> {
         let r3 = another_finite_float(r2, u)?;
         let scale = finite_float(u)?;
 
-        Ok(Cubic {
-            c3: scale,
-            c2: check_finite(-scale * (r1 + r2 + r3))?,
-            c1: check_finite(scale * (r1 * r2 + r1 * r3 + r2 * r3))?,
-            c0: check_finite(-scale * r1 * r2 * r3)?,
-        })
+        Ok(Cubic::new([
+            check_finite(-scale * r1 * r2 * r3)?,
+            check_finite(scale * (r1 * r2 + r1 * r3 + r2 * r3))?,
+            check_finite(-scale * (r1 + r2 + r3))?,
+            scale,
+        ]))
     }
 }

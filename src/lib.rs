@@ -6,6 +6,7 @@
 
 mod cubic;
 mod poly;
+mod poly_dyn;
 mod quadratic;
 mod yuksel;
 
@@ -15,14 +16,8 @@ pub mod arbitrary;
 #[cfg(any(test, feature = "dashu-float"))]
 pub mod accurate;
 
-// Cubic and Quadratic are used in benches so they have to be public.
-// We haven't actually put any thought into their API yet, though.
-#[doc(hidden)]
-pub use cubic::Cubic;
-#[doc(hidden)]
-pub use quadratic::Quadratic;
-
-pub use poly::Poly;
+pub use poly::{Cubic, Poly, Quadratic, Quartic, Quintic};
+pub use poly_dyn::PolyDyn;
 
 fn different_signs(x: f64, y: f64) -> bool {
     (x < 0.0) != (y < 0.0)

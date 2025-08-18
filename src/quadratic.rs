@@ -1,49 +1,10 @@
 use arrayvec::ArrayVec;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Quadratic {
-    pub c0: f64,
-    pub c1: f64,
-    pub c2: f64,
-}
-
-impl std::ops::Mul<f64> for Quadratic {
-    type Output = Quadratic;
-
-    fn mul(self, rhs: f64) -> Self::Output {
-        Self {
-            c0: self.c0 * rhs,
-            c1: self.c1 * rhs,
-            c2: self.c2 * rhs,
-        }
-    }
-}
-
-impl std::ops::Div<f64> for Quadratic {
-    type Output = Quadratic;
-
-    fn div(self, rhs: f64) -> Self::Output {
-        Self {
-            c0: self.c0 / rhs,
-            c1: self.c1 / rhs,
-            c2: self.c2 / rhs,
-        }
-    }
-}
+use crate::Quadratic;
 
 impl Quadratic {
-    pub fn eval(&self, x: f64) -> f64 {
-        self.c0 + self.c1 * x + self.c2 * x * x
-    }
-
-    pub fn is_finite(&self) -> bool {
-        self.c0.is_finite() && self.c1.is_finite() && self.c2.is_finite()
-    }
-
     pub fn roots(&self) -> ArrayVec<f64, 2> {
-        let a = self.c2;
-        let b = self.c1;
-        let c = self.c0;
+        let &[c, b, a] = self.coeffs();
         let disc = b * b - 4.0 * a * c;
         if disc.is_finite() {
             let mut ret = ArrayVec::new();
@@ -94,9 +55,7 @@ impl Quadratic {
     }
 
     pub fn positive_discriminant_roots(&self) -> Option<(f64, f64)> {
-        let a = self.c2;
-        let b = self.c1;
-        let c = self.c0;
+        let &[c, b, a] = self.coeffs();
         let disc = b * b - 4.0 * a * c;
         if disc.is_finite() {
             if disc > 0.0 {
@@ -123,9 +82,7 @@ impl Quadratic {
     }
 
     pub fn positive_discriminant_roots_no_overflow_check(&self) -> Option<(f64, f64)> {
-        let a = self.c2;
-        let b = self.c1;
-        let c = self.c0;
+        let &[c, b, a] = self.coeffs();
         let disc = b * b - 4.0 * a * c;
         if disc > 0.0 {
             let q = -0.5 * (b + disc.sqrt().copysign(b));
@@ -138,9 +95,7 @@ impl Quadratic {
     }
 
     pub fn positive_discriminant_roots_no_overflow_check_half_b(&self) -> Option<(f64, f64)> {
-        let a = self.c2;
-        let b = self.c1;
-        let c = self.c0;
+        let &[c, b, a] = self.coeffs();
         let disc = b * b - a * c;
         if disc > 0.0 {
             let q = -(b + disc.sqrt().copysign(b));
@@ -161,7 +116,7 @@ mod tests {
             let q = crate::arbitrary::quadratic(u)?;
             // Arbitrary quadratics can have coefficients with wild magnitudes,
             // so we need to adjust our error expectations accordingly.
-            let magnitude = q.c0.abs().max(q.c1.abs()).max(q.c2.abs()).max(1.0);
+            let magnitude = q.magnitude().max(1.0);
 
             for r in q.roots() {
                 let y = q.eval(r);

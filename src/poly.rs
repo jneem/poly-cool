@@ -1,212 +1,229 @@
-//! Polynomials of dynamic (run-time) degree.
-
-use crate::{Cubic, different_signs, yuksel};
-
-/// A polynomial of dynamic degree.
+/// Polynomial multiplication is not yet implemented, because doing it "nicely"
+/// would require const generic expressions: ideally we'd do something like
 ///
-/// It would be nice to have polynomials of type-level degree,
-/// but that's a bit awkward without const generic expressions
-/// (e.g. to express the type of the derivative). It could be
-/// done with `typenum` and `generic_array`...
-#[derive(Clone, Debug)]
-pub struct Poly {
-    /// Coefficients in increasing order of degree.
-    ///
-    /// For example, `coeffs[0]` is the constant term.
-    coeffs: Vec<f64>,
+/// ```ignore
+/// impl<N, M> Mul<Poly<M>> for Poly<N> {
+///     type Output = Poly<{M + N - 1}>;
+/// }
+/// ```
+///
+/// It's possible to work around this with macros, but there are lots of
+/// possibilities and I didn't feel like it was worth the trouble (and the hit
+/// to compilation time).
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+pub struct Poly<const N: usize> {
+    pub(crate) coeffs: [f64; N],
 }
 
-impl<'a> std::ops::Mul<&'a Poly> for &'a Poly {
-    type Output = Poly;
+pub type Quadratic = Poly<3>;
+pub type Cubic = Poly<4>;
+pub type Quartic = Poly<5>;
+pub type Quintic = Poly<6>;
 
-    fn mul(self, rhs: &Poly) -> Poly {
-        let mut coeffs = vec![0.0; (self.coeffs.len() + rhs.coeffs.len()).saturating_sub(1)];
-
-        for (i, c) in self.coeffs.iter().enumerate() {
-            for (j, d) in rhs.coeffs.iter().enumerate() {
-                coeffs[i + j] += c * d;
-            }
-        }
+impl<const N: usize> Poly<N> {
+    /// Creates a new polynomial with the provided coefficients.
+    ///
+    /// The constant coefficient comes first, then the linear coefficient, and
+    /// so on. So if you pass `[c, b, a]` you'll get the polynomial
+    /// `a x^2 + b x + c`.
+    pub const fn new(coeffs: [f64; N]) -> Poly<N> {
         Poly { coeffs }
     }
-}
 
-impl std::ops::Mul<&Poly> for Poly {
-    type Output = Poly;
-
-    fn mul(self, rhs: &Poly) -> Poly {
-        (&self) * rhs
-    }
-}
-
-impl Poly {
-    /// Constructs a new polynomial from coefficients.
-    ///
-    /// The first coefficient provided will be the constant term, the second will
-    /// be the linear term, and so on.
-    pub fn new(coeffs: impl IntoIterator<Item = f64>) -> Self {
-        Poly {
-            coeffs: coeffs.into_iter().collect(),
-        }
-    }
-
-    pub fn coeffs(&self) -> &[f64] {
+    pub fn coeffs(&self) -> &[f64; N] {
         &self.coeffs
     }
 
-    fn is_finite(&self) -> bool {
+    pub fn eval(&self, x: f64) -> f64 {
+        let mut acc = 0.0;
+        for c in self.coeffs.iter().rev() {
+            // It would be nice to use `f64::mul_add` here, but it's slow on
+            // architectures that don't have a dedicated instruction.
+            acc = acc * x + c;
+        }
+        acc
+    }
+
+    pub fn magnitude(&self) -> f64 {
+        let mut max = 0.0f64;
+        for c in &self.coeffs {
+            max = max.max(c.abs());
+        }
+        max
+    }
+
+    pub fn is_finite(&self) -> bool {
         self.coeffs.iter().all(|c| c.is_finite())
     }
+}
 
-    /// Returns the polynomial that's the derivative of this polynomial.
-    pub fn deriv(&self) -> Poly {
-        let mut coeffs = Vec::with_capacity(self.coeffs.len() - 1);
-        // If we're empty (meaning that we're the constant zero polynomial),
-        // this will just return the zero polynomial again: no need for a
-        // special case.
-        for (i, c) in self.coeffs.iter().enumerate().skip(1) {
-            coeffs.push(c * (i as f64));
-        }
-        Poly { coeffs }
-    }
-
-    /// Evaluates this polynomial at a point.
-    pub fn eval(&self, x: f64) -> f64 {
-        let mut ret = 0.0;
-        let mut x_pow = 1.0;
-        for &c in &self.coeffs {
-            ret += c * x_pow;
-            x_pow *= x;
-        }
-        ret
-    }
-
-    /// The degree of this polynomial.
-    ///
-    /// This function only looks at the *presence* of coefficients, not their
-    /// value. If you construct a polynomial with three coefficients, this
-    /// method will say that it has degree 2 even if all of those coefficients
-    /// are zero.
-    ///
-    /// A polynomial with no coefficients will give zero as its degree, as will
-    /// a polynomial with one coefficient.
-    pub fn degree(&self) -> usize {
-        self.coeffs.len().saturating_sub(1)
-    }
-
-    /// If this polynomial has degree 3 or less, converts it to a [cubic](crate::Cubic).
-    fn to_cubic(&self) -> Option<Cubic> {
-        if self.degree() <= 3 {
-            Some(Cubic {
-                c0: self.coeffs.first().copied().unwrap_or(0.0),
-                c1: self.coeffs.get(1).copied().unwrap_or(0.0),
-                c2: self.coeffs.get(2).copied().unwrap_or(0.0),
-                c3: self.coeffs.get(3).copied().unwrap_or(0.0),
-            })
-        } else {
-            None
-        }
-    }
-
-    /// Finds all the roots in an interval, using Yuksel's algorithm.
-    ///
-    /// This is a numerical, iterative method. It first constructs critical
-    /// points to find bracketing intervals (intervals `[x0, x1]` where
-    /// `self.eval(x0)` and `self.eval(x1)` have different signs). Then it uses
-    /// a kind of modified Newton method to find a root on each bracketing
-    /// interval. It has a few limitations:
-    ///
-    /// - if there is only a small interval where the polynomial changes sign,
-    ///   it can miss roots. For example, when two roots are very close together
-    ///   it can miss them both.
-    /// - run time is quadratic in the degree. However, it is often very fast
-    ///   in practice for polynomials of low degree, especially if the interval
-    ///   `[lower, upper]` contains few roots.
-    pub fn roots_between(&self, lower: f64, upper: f64, x_error: f64) -> Vec<f64> {
-        let mut ret = Vec::new();
-        let mut scratch = Vec::new();
-        self.roots_between_with_buffer(lower, upper, x_error, &mut ret, &mut scratch);
-        ret
-    }
-
-    /// Finds all the roots in an interval, using Yuksel's algorithm.
-    ///
-    /// See [`Poly::roots_between`] for more details. This method differs from that
-    /// one in that it performs fewer allocations: you provide an `out` buffer
-    /// for the result and a `scratch` buffer for intermediate computations.
-    pub fn roots_between_with_buffer(
-        &self,
-        lower: f64,
-        upper: f64,
-        x_error: f64,
-        out: &mut Vec<f64>,
-        scratch: &mut Vec<f64>,
-    ) {
-        out.clear();
-        scratch.clear();
-
-        if let Some(c) = self.to_cubic() {
-            out.extend(c.roots_between(lower, upper, x_error));
-            return;
-        }
-
-        let deriv = self.deriv();
-        if !deriv.is_finite() {
-            return;
-        }
-        deriv.roots_between_with_buffer(lower, upper, x_error, scratch, out);
-        scratch.push(upper);
-        out.clear();
-        let mut last = lower;
-        let mut last_val = self.eval(last);
-
-        // `scratch` now contains all the critical points (in increasing order)
-        // and the upper endpoint of the interval. If we throw away all the
-        // critical points that are outside of (lower, upper), the things
-        // remaining in `scratch` are the endpoints of the potential bracketing
-        // intervals of our polynomial. So by filtering out uninteresting
-        // critical points, this loop is iterating over potential bracketing
-        // intervals.
-        for &mut x in scratch {
-            if x > last && x <= upper {
-                let val = self.eval(x);
-                if different_signs(last_val, val) {
-                    out.push(yuksel::find_root(
-                        |x| self.eval(x),
-                        |x| deriv.eval(x),
-                        last,
-                        x,
-                        last_val,
-                        val,
-                        x_error,
-                    ));
+macro_rules! impl_deriv_and_deflate {
+    ($N:literal, $N_MINUS_ONE:literal) => {
+        impl Poly<$N> {
+            /// Compute the derivative of this polynomial, as a polynomial with
+            /// one less coefficient.
+            pub fn deriv(&self) -> Poly<$N_MINUS_ONE> {
+                let mut coeffs = [0.0; $N_MINUS_ONE];
+                for (i, (d, c)) in coeffs.iter_mut().zip(&self.coeffs[1..]).enumerate() {
+                    *d = (i + 1) as f64 * c;
                 }
-
-                last = x;
-                last_val = val;
+                Poly::new(coeffs)
             }
+
+            /// Divide this polynomial by the polynomial `x - root`, returning the
+            /// quotient (as a polynomial with one less coefficient) and ignoring
+            /// the remainder.
+            ///
+            /// If `root` is actually a root of `self` (as the name suggests
+            /// it should be, but this is not actually required), the
+            /// remainder will be zero. In general, the remainder will be
+            /// `self.eval(root)`.
+            pub fn deflate(&self, root: f64) -> Poly<$N_MINUS_ONE> {
+                let mut acc = 0.0;
+                let mut coeffs = [0.0; $N_MINUS_ONE];
+                for (d, c) in coeffs.iter_mut().zip(&self.coeffs[1..]).rev() {
+                    acc = acc * root + c;
+                    *d = acc;
+                }
+                Poly::new(coeffs)
+            }
+        }
+    };
+}
+
+impl_deriv_and_deflate!(3, 2);
+impl_deriv_and_deflate!(4, 3);
+impl_deriv_and_deflate!(5, 4);
+impl_deriv_and_deflate!(6, 5);
+
+impl<const N: usize> std::ops::Mul<f64> for Poly<N> {
+    type Output = Poly<N>;
+
+    fn mul(mut self, scale: f64) -> Poly<N> {
+        self *= scale;
+        self
+    }
+}
+
+impl<const N: usize> std::ops::MulAssign<f64> for Poly<N> {
+    fn mul_assign(&mut self, scale: f64) {
+        for c in &mut self.coeffs {
+            *c *= scale;
         }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl<const N: usize> std::ops::Mul<f64> for &Poly<N> {
+    type Output = Poly<N>;
 
-    #[test]
-    fn smoke() {
-        let x_minus_1 = Poly::new([-1.0, 1.0]);
-        let x_minus_2 = Poly::new([-2.0, 1.0]);
-        let x_minus_3 = Poly::new([-3.0, 1.0]);
-        let x_minus_4 = Poly::new([-4.0, 1.0]);
+    fn mul(self, scale: f64) -> Poly<N> {
+        (*self) * scale
+    }
+}
 
-        let p = &x_minus_1 * &x_minus_2 * &x_minus_3 * &x_minus_4;
+impl<const N: usize> std::ops::Div<f64> for Poly<N> {
+    type Output = Poly<N>;
 
-        let roots = p.roots_between(0.0, 5.0, 1e-6);
-        assert_eq!(roots.len(), 4);
-        assert!((roots[0] - 1.0).abs() <= 1e-6);
-        assert!((roots[1] - 2.0).abs() <= 1e-6);
-        assert!((roots[2] - 3.0).abs() <= 1e-6);
-        assert!((roots[3] - 4.0).abs() <= 1e-6);
+    fn div(mut self, scale: f64) -> Poly<N> {
+        self /= scale;
+        self
+    }
+}
+
+impl<const N: usize> std::ops::DivAssign<f64> for Poly<N> {
+    fn div_assign(&mut self, scale: f64) {
+        for c in &mut self.coeffs {
+            *c /= scale;
+        }
+    }
+}
+
+impl<const N: usize> std::ops::Div<f64> for &Poly<N> {
+    type Output = Poly<N>;
+
+    fn div(self, scale: f64) -> Poly<N> {
+        (*self) / scale
+    }
+}
+
+impl<const N: usize> std::ops::AddAssign<&Poly<N>> for Poly<N> {
+    fn add_assign(&mut self, rhs: &Poly<N>) {
+        for (c, d) in self.coeffs.iter_mut().zip(rhs.coeffs) {
+            *c += d;
+        }
+    }
+}
+
+impl<const N: usize> std::ops::AddAssign<Poly<N>> for Poly<N> {
+    fn add_assign(&mut self, rhs: Poly<N>) {
+        *self += &rhs;
+    }
+}
+
+impl<const N: usize> std::ops::Add<Poly<N>> for Poly<N> {
+    type Output = Poly<N>;
+
+    fn add(mut self, rhs: Poly<N>) -> Poly<N> {
+        self += rhs;
+        self
+    }
+}
+
+impl<const N: usize> std::ops::Add<&Poly<N>> for Poly<N> {
+    type Output = Poly<N>;
+
+    fn add(mut self, rhs: &Poly<N>) -> Poly<N> {
+        self += rhs;
+        self
+    }
+}
+
+impl<const N: usize> std::ops::Add<Poly<N>> for &Poly<N> {
+    type Output = Poly<N>;
+
+    fn add(self, mut rhs: Poly<N>) -> Poly<N> {
+        rhs += self;
+        rhs
+    }
+}
+
+impl<const N: usize> std::ops::SubAssign<&Poly<N>> for Poly<N> {
+    fn sub_assign(&mut self, rhs: &Poly<N>) {
+        for (c, d) in self.coeffs.iter_mut().zip(rhs.coeffs) {
+            *c -= d;
+        }
+    }
+}
+
+impl<const N: usize> std::ops::SubAssign<Poly<N>> for Poly<N> {
+    fn sub_assign(&mut self, rhs: Poly<N>) {
+        *self -= &rhs;
+    }
+}
+
+impl<const N: usize> std::ops::Sub<Poly<N>> for Poly<N> {
+    type Output = Poly<N>;
+
+    fn sub(mut self, rhs: Poly<N>) -> Poly<N> {
+        self -= rhs;
+        self
+    }
+}
+
+impl<const N: usize> std::ops::Sub<&Poly<N>> for Poly<N> {
+    type Output = Poly<N>;
+
+    fn sub(mut self, rhs: &Poly<N>) -> Poly<N> {
+        self -= rhs;
+        self
+    }
+}
+
+impl<const N: usize> std::ops::Sub<Poly<N>> for &Poly<N> {
+    type Output = Poly<N>;
+
+    fn sub(self, mut rhs: Poly<N>) -> Poly<N> {
+        rhs -= self;
+        rhs
     }
 }
