@@ -1,3 +1,5 @@
+use arrayvec::ArrayVec;
+
 /// Polynomial multiplication is not yet implemented, because doing it "nicely"
 /// would require const generic expressions: ideally we'd do something like
 ///
@@ -30,10 +32,14 @@ impl<const N: usize> Poly<N> {
         Poly { coeffs }
     }
 
+    /// The coefficients of this polynomial.
+    ///
+    /// In the returned array, the coefficient of `x^i` is at index `i`.
     pub fn coeffs(&self) -> &[f64; N] {
         &self.coeffs
     }
 
+    /// Evaluates this polynomial at a point.
     pub fn eval(&self, x: f64) -> f64 {
         let mut acc = 0.0;
         for c in self.coeffs.iter().rev() {
@@ -44,6 +50,9 @@ impl<const N: usize> Poly<N> {
         acc
     }
 
+    /// Returns the largest absolute value of any coefficient.
+    ///
+    /// Always returns a non-negative number, or NaN if some coefficient is NaN.
     pub fn magnitude(&self) -> f64 {
         let mut max = 0.0f64;
         for c in &self.coeffs {
@@ -52,6 +61,7 @@ impl<const N: usize> Poly<N> {
         max
     }
 
+    /// Are all the coefficients finite?
     pub fn is_finite(&self) -> bool {
         self.coeffs.iter().all(|c| c.is_finite())
     }
@@ -91,10 +101,76 @@ macro_rules! impl_deriv_and_deflate {
     };
 }
 
+macro_rules! impl_roots_between_recursive {
+    ($N:literal, $N_MINUS_ONE:literal) => {
+        impl Poly<$N> {
+            pub fn roots_between(
+                self,
+                lower: f64,
+                upper: f64,
+                x_error: f64,
+            ) -> ArrayVec<f64, $N_MINUS_ONE> {
+                let mut ret = ArrayVec::new();
+                let mut scratch = ArrayVec::new();
+                self.roots_between_with_buffer(lower, upper, x_error, &mut scratch, &mut ret);
+                ret
+            }
+
+            // This would ideally have a `where M >= N - 1` bound on it,
+            // but it's private so it shouldn't matter too much.
+            // We assume that `scratch` and `out` are both empty.
+            fn roots_between_with_buffer<const M: usize>(
+                self,
+                lower: f64,
+                upper: f64,
+                x_error: f64,
+                scratch: &mut ArrayVec<f64, M>,
+                out: &mut ArrayVec<f64, M>,
+            ) {
+                let deriv = self.deriv();
+                if !deriv.is_finite() {
+                    return;
+                }
+                deriv.roots_between_with_buffer(lower, upper, x_error, out, scratch);
+                scratch.push(upper);
+                out.clear();
+                let mut last = lower;
+                let mut last_val = self.eval(last);
+
+                // `endpoint` now contains all the critical points (in increasing order)
+                // and the upper endpoint of the interval. These are the endpoints
+                // of the potential bracketing intervals of our polynomial.
+                for &mut x in scratch {
+                    let val = self.eval(x);
+                    if $crate::different_signs(last_val, val) {
+                        out.push($crate::yuksel::find_root(
+                            |x| self.eval(x),
+                            |x| deriv.eval(x),
+                            last,
+                            x,
+                            last_val,
+                            val,
+                            x_error,
+                        ));
+                    }
+
+                    last = x;
+                    last_val = val;
+                }
+            }
+        }
+    };
+}
+
 impl_deriv_and_deflate!(3, 2);
 impl_deriv_and_deflate!(4, 3);
 impl_deriv_and_deflate!(5, 4);
 impl_deriv_and_deflate!(6, 5);
+impl_deriv_and_deflate!(7, 6);
+
+impl_roots_between_recursive!(5, 4);
+impl_roots_between_recursive!(6, 5);
+impl_roots_between_recursive!(7, 6);
 
 impl<const N: usize> std::ops::Mul<f64> for Poly<N> {
     type Output = Poly<N>;
@@ -225,5 +301,30 @@ impl<const N: usize> std::ops::Sub<Poly<N>> for &Poly<N> {
     fn sub(self, mut rhs: Poly<N>) -> Poly<N> {
         rhs -= self;
         rhs
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn smoke() {
+        let p = Poly::new([-6.0, 11.0, -6.0, 1.0]);
+
+        let roots = p.roots_between(0.0, 5.0, 1e-6);
+        assert_eq!(roots.len(), 3);
+        assert!((roots[0] - 1.0).abs() <= 1e-6);
+        assert!((roots[1] - 2.0).abs() <= 1e-6);
+        assert!((roots[2] - 3.0).abs() <= 1e-6);
+
+        let p = Poly::new([24.0, -50.0, 35.0, -10.0, 1.0]);
+
+        let roots = p.roots_between(0.0, 5.0, 1e-6);
+        assert_eq!(roots.len(), 4);
+        assert!((roots[0] - 1.0).abs() <= 1e-6);
+        assert!((roots[1] - 2.0).abs() <= 1e-6);
+        assert!((roots[2] - 3.0).abs() <= 1e-6);
+        assert!((roots[3] - 4.0).abs() <= 1e-6);
     }
 }

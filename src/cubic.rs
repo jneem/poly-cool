@@ -105,19 +105,31 @@ impl Cubic {
     /// double-roots of the derivative aren't local extrema.
     pub fn roots_between(self, lower: f64, upper: f64, x_error: f64) -> ArrayVec<f64, 3> {
         let mut ret = ArrayVec::new();
+        let mut scratch = ArrayVec::new();
+        self.roots_between_with_buffer(lower, upper, x_error, &mut scratch, &mut ret);
+        ret
+    }
+
+    pub(crate) fn roots_between_with_buffer<const M: usize>(
+        self,
+        lower: f64,
+        upper: f64,
+        x_error: f64,
+        _scratch: &mut ArrayVec<f64, M>,
+        out: &mut ArrayVec<f64, M>,
+    ) {
         if let Some(r) = self.first_root(lower, upper, x_error) {
-            ret.push(r);
+            out.push(r);
             let quad = self.deflate(r);
             if let Some((x0, x1)) = quad.positive_discriminant_roots() {
                 if lower <= x0 && x0 <= upper {
-                    ret.push(x0);
+                    out.push(x0);
                 }
                 if lower <= x1 && x1 <= upper {
-                    ret.push(x1);
+                    out.push(x1);
                 }
             }
         }
-        ret
     }
 
     /// Computes all roots between `lower` and `upper`, to the desired accuracy.
