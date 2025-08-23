@@ -2,12 +2,7 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
 pub fn cubic_roots(c: &mut Criterion) {
-    let poly = poly_cool::Cubic {
-        c3: 1.0,
-        c2: -6.0,
-        c1: 11.0,
-        c0: -6.0,
-    };
+    let poly = poly_cool::Cubic::new([-6.0, 11.0, -6.0, 1.0]);
 
     let mut group = c.benchmark_group("simple roots");
 
@@ -32,22 +27,13 @@ pub fn cubic_roots(c: &mut Criterion) {
         b.iter(|| black_box(poly).roots_blinn_and_deflate())
     });
     group.bench_function("kurbo", |b| {
+        let &[c0, c1, c2, c3] = poly.coeffs();
         b.iter(|| {
-            kurbo::common::solve_cubic(
-                black_box(poly.c0),
-                black_box(poly.c1),
-                black_box(poly.c2),
-                black_box(poly.c3),
-            )
+            kurbo::common::solve_cubic(black_box(c0), black_box(c1), black_box(c2), black_box(c3))
         })
     });
 
-    let poly = poly_cool::Cubic {
-        c3: 1.0,
-        c2: -6.0,
-        c1: 11.0,
-        c0: -100.0,
-    };
+    let poly = poly_cool::Cubic::new([1.0, -6.0, 11.0, -100.0]);
     group.bench_function("roots_blinn with one root", |b| {
         b.iter(|| black_box(poly).roots_blinn())
     });
