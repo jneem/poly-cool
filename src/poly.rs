@@ -1,5 +1,12 @@
 use arrayvec::ArrayVec;
 
+/// A polynomial whose degree is known at compile-time.
+///
+/// Although this supports polynomials of arbitrary degree, it is intended
+/// for low-degree polynomials. For example, the coefficients are stored
+/// in an array, and so they will be stack-allocated (unless you `Box`
+/// the `Poly`, of course) tend to be copied around.
+///
 /// Polynomial multiplication is not yet implemented, because doing it "nicely"
 /// would require const generic expressions: ideally we'd do something like
 ///
@@ -17,9 +24,16 @@ pub struct Poly<const N: usize> {
     pub(crate) coeffs: [f64; N],
 }
 
+/// A polynomial of degree 2.
 pub type Quadratic = Poly<3>;
+
+/// A polynomial of degree 3.
 pub type Cubic = Poly<4>;
+
+/// A polynomial of degree 4.
 pub type Quartic = Poly<5>;
+
+/// A polynomial of degree 5.
 pub type Quintic = Poly<6>;
 
 impl<const N: usize> Poly<N> {
@@ -104,6 +118,14 @@ macro_rules! impl_deriv_and_deflate {
 macro_rules! impl_roots_between_recursive {
     ($N:literal, $N_MINUS_ONE:literal) => {
         impl Poly<$N> {
+            /// Computes all roots between `lower` and `upper`, to the desired accuracy.
+            ///
+            /// We make no guarantees about multiplicity. For example, if there's a
+            /// double-root that isn't a triple-root (and therefore has no sign change
+            /// nearby) then there's a good chance we miss it altogether. This is
+            /// fine if you're using this root-finding to find critical points for
+            /// optimizing a polynomial, because roots that don't come with a sign
+            /// change aren't local extrema.
             pub fn roots_between(
                 self,
                 lower: f64,
@@ -167,10 +189,16 @@ impl_deriv_and_deflate!(4, 3);
 impl_deriv_and_deflate!(5, 4);
 impl_deriv_and_deflate!(6, 5);
 impl_deriv_and_deflate!(7, 6);
+impl_deriv_and_deflate!(8, 7);
+impl_deriv_and_deflate!(9, 8);
+impl_deriv_and_deflate!(10, 9);
 
 impl_roots_between_recursive!(5, 4);
 impl_roots_between_recursive!(6, 5);
 impl_roots_between_recursive!(7, 6);
+impl_roots_between_recursive!(8, 7);
+impl_roots_between_recursive!(9, 8);
+impl_roots_between_recursive!(10, 9);
 
 impl<const N: usize> std::ops::Mul<f64> for Poly<N> {
     type Output = Poly<N>;

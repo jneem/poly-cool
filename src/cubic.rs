@@ -214,6 +214,11 @@ impl Cubic {
         c
     }
 
+    // Blinn's algorithm for roots.
+    //
+    // This is just an experiment, and we only make it public to allow ourselves
+    // to benchmark it.
+    #[doc(hidden)]
     pub fn roots_blinn(&self) -> ArrayVec<f64, 3> {
         let mut ret = ArrayVec::new();
         let a = self.coeffs[3];
@@ -315,6 +320,11 @@ impl Cubic {
         ret
     }
 
+    // A variant on Blinn's algorithm for roots.
+    //
+    // This is just an experiment, and we only make it public to allow ourselves
+    // to benchmark it.
+    #[doc(hidden)]
     pub fn roots_blinn_and_deflate(&self) -> ArrayVec<f64, 3> {
         let mut ret = ArrayVec::new();
         let a = self.coeffs[3];

@@ -50,6 +50,9 @@ impl PolyDyn {
         }
     }
 
+    /// The coefficients of this polynomial.
+    ///
+    /// In the returned slice, the coefficient of `x^i` is at index `i`.
     pub fn coeffs(&self) -> &[f64] {
         &self.coeffs
     }
@@ -131,7 +134,7 @@ impl PolyDyn {
 
     /// Finds all the roots in an interval, using Yuksel's algorithm.
     ///
-    /// See [`Poly::roots_between`] for more details. This method differs from that
+    /// See [`PolyDyn::roots_between`] for more details. This method differs from that
     /// one in that it performs fewer allocations: you provide an `out` buffer
     /// for the result and a `scratch` buffer for intermediate computations.
     pub fn roots_between_with_buffer(
