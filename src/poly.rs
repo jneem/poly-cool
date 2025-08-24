@@ -355,4 +355,50 @@ mod tests {
         assert!((roots[2] - 3.0).abs() <= 1e-6);
         assert!((roots[3] - 4.0).abs() <= 1e-6);
     }
+
+    // Asserts that the supplied "roots" are close to being roots of the
+    // cubic, in the sense that the cubic evaluates to approximately zero
+    // on each of the roots.
+    fn check_root_values<const N: usize>(p: &Poly<N>, roots: &[f64]) {
+        // Arbitrary cubics can have coefficients with wild magnitudes,
+        // so we need to adjust our error expectations accordingly.
+        let magnitude = p.magnitude().max(1.0);
+        let accuracy = magnitude * 1e-12;
+
+        for r in roots {
+            // We can't expect great accuracy for very large roots,
+            // because the polynomial evaluation will involve very
+            // large terms.
+            let accuracy = accuracy * r.abs().powi(N as i32 - 1).max(1.0);
+            let y = p.eval(*r);
+            if y.is_finite() {
+                assert!(
+                    y.abs() <= accuracy,
+                    "poly {p:?} had root {r} evaluate to {y:?}, but expected {accuracy:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn root_evaluation_deg4() {
+        arbtest::arbtest(|u| {
+            let poly: Poly<5> = crate::arbitrary::poly(u)?;
+            let roots = poly.roots_between(-10.0, 10.0, 1e-13);
+            check_root_values(&poly, &roots);
+            Ok(())
+        })
+        .budget_ms(5_000);
+    }
+
+    #[test]
+    fn root_evaluation_deg9() {
+        arbtest::arbtest(|u| {
+            let poly: Poly<10> = crate::arbitrary::poly(u)?;
+            let roots = poly.roots_between(-10.0, 10.0, 1e-13);
+            check_root_values(&poly, &roots);
+            Ok(())
+        })
+        .budget_ms(5_000);
+    }
 }
