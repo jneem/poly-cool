@@ -15,6 +15,14 @@ impl Cubic {
         c0 + c1 * x + c2 * xx + c3 * xxx
     }
 
+    /// Evaluate this cubic and its gradient at the same time, reusing some
+    /// of the intermediate computations.
+    ///
+    /// In micro-benchmarks, this is faster than evaluating separately. But
+    /// it doesn't help with the performance of Yuksel's algorithm, presumably
+    /// because the compiler is inlining and optimizing reuse of the
+    /// intermediate computations already.
+    #[doc(hidden)]
     pub fn eval_with_deriv_opt(&self, deriv: &Quadratic, x: f64) -> (f64, f64) {
         let [c0, c1, c2, c3] = self.coeffs;
         let [d0, d1, d2] = deriv.coeffs;

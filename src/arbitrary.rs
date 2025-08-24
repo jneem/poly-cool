@@ -2,7 +2,7 @@
 
 use arbitrary::Unstructured;
 
-use crate::{Cubic, Quadratic};
+use crate::{Cubic, Poly, Quadratic};
 
 fn check_finite(f: f64) -> Result<f64, arbitrary::Error> {
     if f.is_finite() {
@@ -73,5 +73,47 @@ pub fn cubic(u: &mut Unstructured<'_>) -> Result<Cubic, arbitrary::Error> {
             check_finite(-scale * (r1 + r2 + r3))?,
             scale,
         ]))
+    }
+}
+
+pub fn poly<const N: usize>(u: &mut Unstructured<'_>) -> Result<Poly<N>, arbitrary::Error> {
+    assert!(N >= 2);
+
+    let use_coeffs: bool = u.arbitrary()?;
+    if use_coeffs {
+        let mut coeffs = [0.0; N];
+        coeffs[0] = finite_float(u)?;
+        for i in 1..coeffs.len() {
+            coeffs[i] = another_finite_float(coeffs[i - 1], u)?;
+        }
+
+        Ok(Poly::new(coeffs))
+    } else {
+        // Generate the roots, with a bias towards roots being almost-repeated.
+        let mut r = finite_float(u)?;
+        let mut coeffs = [0.0; N];
+        coeffs[1] = 1.0;
+        coeffs[0] = -r;
+
+        for _ in 0..(N - 2) {
+            r = another_finite_float(r, u)?;
+            mul(&mut coeffs, r);
+        }
+
+        let scale = finite_float(u)?;
+        for c in &mut coeffs {
+            *c *= scale;
+            check_finite(*c)?;
+        }
+
+        Ok(Poly::new(coeffs))
+    }
+}
+
+// Takes the polynomial in `coeffs` and multiplies it by (x - root).
+// (Only correct if the last coefficient is zero.)
+fn mul<const N: usize>(coeffs: &mut [f64; N], root: f64) {
+    for i in (1..coeffs.len()).rev() {
+        coeffs[i] = coeffs[i - 1] - root * coeffs[i];
     }
 }
