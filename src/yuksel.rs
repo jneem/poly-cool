@@ -19,10 +19,20 @@ pub(crate) fn find_root<F: Fn(f64) -> f64, DF: Fn(f64) -> f64>(
     debug_assert!(different_signs(val_lower, val_upper));
 
     let mut x = lower + (upper - lower) / 2.0;
-    let mut val_x = f(x);
     let mut step = (upper - lower) / 2.0;
 
+    if step.abs() <= x_error {
+        return x;
+    }
+
     while step.abs() > x_error && x.is_finite() {
+        // There's potentially a performance gain to be had by evaluating the
+        // derivative and the polynomial "jointly", so that subexpressions can
+        // be shared. At least for the cubic case, the compiler is smart enough
+        // to do that for us.
+        let deriv_x = deriv(x);
+        let val_x = f(x);
+
         let root_in_first_half = different_signs(val_lower, val_x);
         if root_in_first_half {
             upper = x;
@@ -30,7 +40,6 @@ pub(crate) fn find_root<F: Fn(f64) -> f64, DF: Fn(f64) -> f64>(
             lower = x;
         }
 
-        let deriv_x = deriv(x);
         debug_assert!(deriv_x.is_finite());
         debug_assert!(val_x.is_finite());
 
@@ -53,7 +62,6 @@ pub(crate) fn find_root<F: Fn(f64) -> f64, DF: Fn(f64) -> f64>(
         }
         step = new_x - x;
         x = new_x;
-        val_x = f(x);
     }
     x
 }
