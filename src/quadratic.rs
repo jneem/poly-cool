@@ -3,6 +3,19 @@ use arrayvec::ArrayVec;
 use crate::Quadratic;
 
 impl Quadratic {
+    /// This is like [`Quadratic::eval`] but faster.
+    ///
+    /// It would be nice if we could just make `eval` like this, but I couldn't
+    /// figure out how, given the lack of specialization.
+    #[doc(hidden)]
+    pub fn eval_opt(&self, x: f64) -> f64 {
+        let [c0, c1, c2] = self.coeffs;
+        c0 + c1 * x + c2 * x * x
+    }
+
+    /// Returns the roots of this quadratic, in increasing order.
+    ///
+    /// Double-roots are only counted once.
     pub fn roots(&self) -> ArrayVec<f64, 2> {
         let &[c, b, a] = self.coeffs();
         let disc = b * b - 4.0 * a * c;
@@ -48,12 +61,18 @@ impl Quadratic {
             // completely destroy all the coefficients: because of the overflow,
             // we know that at least one of them was big.
             let scale = 2.0f64.powi(-515);
-            // TODO: this can stack overflow if we're infinite. How should
-            // we handle that?
-            (*self * scale).roots()
+            // If we're infinite, just give up. (Otherwise, we'd stack overflow
+            // by repeatedly trying to rescale.)
+            if self.is_finite() {
+                (*self * scale).roots()
+            } else {
+                ArrayVec::new()
+            }
         }
     }
 
+    /// Returns the two distinct roots of this quadratic, but only if the
+    /// discriminant is positive.
     pub fn positive_discriminant_roots(&self) -> Option<(f64, f64)> {
         let &[c, b, a] = self.coeffs();
         let disc = b * b - 4.0 * a * c;
@@ -76,32 +95,6 @@ impl Quadratic {
         if self.is_finite() {
             let scale = 2.0f64.powi(-515);
             (*self * scale).positive_discriminant_roots()
-        } else {
-            None
-        }
-    }
-
-    pub fn positive_discriminant_roots_no_overflow_check(&self) -> Option<(f64, f64)> {
-        let &[c, b, a] = self.coeffs();
-        let disc = b * b - 4.0 * a * c;
-        if disc > 0.0 {
-            let q = -0.5 * (b + disc.sqrt().copysign(b));
-            let r0 = q / a;
-            let r1 = c / q;
-            Some((r0.min(r1), r0.max(r1)))
-        } else {
-            None
-        }
-    }
-
-    pub fn positive_discriminant_roots_no_overflow_check_half_b(&self) -> Option<(f64, f64)> {
-        let &[c, b, a] = self.coeffs();
-        let disc = b * b - a * c;
-        if disc > 0.0 {
-            let q = -(b + disc.sqrt().copysign(b));
-            let r0 = q / a;
-            let r1 = c / q;
-            Some((r0.min(r1), r0.max(r1)))
         } else {
             None
         }

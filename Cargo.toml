@@ -29,6 +29,10 @@ name = "cubic_roots"
 harness = false
 
 [[bench]]
+name = "eval"
+harness = false
+
+[[bench]]
 name = "quadratic_roots"
 harness = false
 

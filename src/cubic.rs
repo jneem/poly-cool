@@ -1,8 +1,28 @@
 use arrayvec::ArrayVec;
 
-use crate::{Cubic, different_signs};
+use crate::{Cubic, Quadratic, different_signs};
 
 impl Cubic {
+    /// This is like [`Cubic::eval`] but faster.
+    ///
+    /// It would be nice if we could just make `eval` like this, but I couldn't
+    /// figure out how, given the lack of specialization.
+    #[doc(hidden)]
+    pub fn eval_opt(&self, x: f64) -> f64 {
+        let [c0, c1, c2, c3] = self.coeffs;
+        let xx = x * x;
+        let xxx = xx * x;
+        c0 + c1 * x + c2 * xx + c3 * xxx
+    }
+
+    pub fn eval_with_deriv_opt(&self, deriv: &Quadratic, x: f64) -> (f64, f64) {
+        let [c0, c1, c2, c3] = self.coeffs;
+        let [d0, d1, d2] = deriv.coeffs;
+        let xx = x * x;
+        let xxx = xx * x;
+        (c0 + c1 * x + c2 * xx + c3 * xxx, d0 + d1 * x + d2 * xx)
+    }
+
     /// Computes the critical points of this cubic, as long
     /// as the discriminant of the derivative is positive.
     /// The return values are in increasing order.
@@ -52,8 +72,8 @@ impl Cubic {
             return f64::NAN;
         }
         crate::yuksel::find_root(
-            |x| self.eval(x),
-            |x| deriv.eval(x),
+            |x| self.eval_opt(x),
+            |x| deriv.eval_opt(x),
             lower,
             upper,
             lower_val,
@@ -130,56 +150,6 @@ impl Cubic {
                 }
             }
         }
-    }
-
-    /// Computes all roots between `lower` and `upper`, to the desired accuracy.
-    ///
-    /// "Accuracy" is measured with respect to the cubic's value: if this cubic
-    /// is called `f` and we find some `x` with `|f(x)| < accuracy` (and `x` is
-    /// contained between two endpoints where `f` has opposite signs) then we'll
-    /// call `x` a root.
-    ///
-    /// We make no guarantees about multiplicity. In fact, if there's a
-    /// double-root that isn't a triple-root (and therefore has no sign change
-    /// nearby) then there's a good chance we miss it altogether. This is
-    /// fine if you're using this root-finding to optimize a quartic, because
-    /// double-roots of the derivative aren't local extrema.
-    // This has to be pub because we're benchmarking it right now.
-    //
-    // We don't really want this public because it appears to be slower than
-    // the other method. This one does a Newton search for each bracketing
-    // interval, while the other one just does a single Newton search
-    // and then deflates to find the other two roots.
-    #[doc(hidden)]
-    pub fn roots_between_multiple_searches(
-        self,
-        lower: f64,
-        upper: f64,
-        x_error: f64,
-    ) -> ArrayVec<f64, 3> {
-        let mut possible_endpoints = ArrayVec::<f64, 3>::new();
-        if let Some((x0, x1)) = self.critical_points() {
-            possible_endpoints.push(x0);
-            possible_endpoints.push(x1);
-        }
-        possible_endpoints.push(upper);
-
-        let mut last = lower;
-        let mut last_val = self.eval(last);
-        let mut ret = ArrayVec::new();
-
-        for x in possible_endpoints {
-            if x > last && x <= upper {
-                let val = self.eval(x);
-                if different_signs(last_val, val) {
-                    ret.push(self.one_root(last, x, last_val, val, x_error));
-                }
-
-                last = x;
-                last_val = val;
-            }
-        }
-        ret
     }
 
     #[doc(hidden)]
@@ -548,8 +518,6 @@ mod tests {
             // We could have a wider range of roots, but then we might need
             // to lower the accuracy depending on what the actual root is: the
             // intermediate computations scale like the cube of the root.
-            let roots = c.roots_between_multiple_searches(-10.0, 10.0, 1e-13);
-            check_root_values(&c, &roots);
             let roots = c.roots_between(-10.0, 10.0, 1e-13);
             check_root_values(&c, &roots);
 

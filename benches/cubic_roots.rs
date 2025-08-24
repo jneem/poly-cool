@@ -6,9 +6,6 @@ pub fn cubic_roots(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("simple roots");
 
-    group.bench_function("roots_between_multiple_searches", |b| {
-        b.iter(|| black_box(poly).roots_between_multiple_searches(-1.0, 4.0, 1e-12))
-    });
     for accuracy in [1e-6, 1e-8, 1e-12] {
         group.bench_with_input(
             format!("roots_between {accuracy:?}"),
