@@ -200,7 +200,7 @@ impl_roots_between_recursive!(8, 7);
 impl_roots_between_recursive!(9, 8);
 impl_roots_between_recursive!(10, 9);
 
-impl<const N: usize> std::ops::Mul<f64> for Poly<N> {
+impl<const N: usize> core::ops::Mul<f64> for Poly<N> {
     type Output = Poly<N>;
 
     fn mul(mut self, scale: f64) -> Poly<N> {
@@ -209,7 +209,7 @@ impl<const N: usize> std::ops::Mul<f64> for Poly<N> {
     }
 }
 
-impl<const N: usize> std::ops::MulAssign<f64> for Poly<N> {
+impl<const N: usize> core::ops::MulAssign<f64> for Poly<N> {
     fn mul_assign(&mut self, scale: f64) {
         for c in &mut self.coeffs {
             *c *= scale;
@@ -217,7 +217,7 @@ impl<const N: usize> std::ops::MulAssign<f64> for Poly<N> {
     }
 }
 
-impl<const N: usize> std::ops::Mul<f64> for &Poly<N> {
+impl<const N: usize> core::ops::Mul<f64> for &Poly<N> {
     type Output = Poly<N>;
 
     fn mul(self, scale: f64) -> Poly<N> {
@@ -225,7 +225,7 @@ impl<const N: usize> std::ops::Mul<f64> for &Poly<N> {
     }
 }
 
-impl<const N: usize> std::ops::Div<f64> for Poly<N> {
+impl<const N: usize> core::ops::Div<f64> for Poly<N> {
     type Output = Poly<N>;
 
     fn div(mut self, scale: f64) -> Poly<N> {
@@ -234,7 +234,7 @@ impl<const N: usize> std::ops::Div<f64> for Poly<N> {
     }
 }
 
-impl<const N: usize> std::ops::DivAssign<f64> for Poly<N> {
+impl<const N: usize> core::ops::DivAssign<f64> for Poly<N> {
     fn div_assign(&mut self, scale: f64) {
         for c in &mut self.coeffs {
             *c /= scale;
@@ -242,7 +242,7 @@ impl<const N: usize> std::ops::DivAssign<f64> for Poly<N> {
     }
 }
 
-impl<const N: usize> std::ops::Div<f64> for &Poly<N> {
+impl<const N: usize> core::ops::Div<f64> for &Poly<N> {
     type Output = Poly<N>;
 
     fn div(self, scale: f64) -> Poly<N> {
@@ -250,7 +250,7 @@ impl<const N: usize> std::ops::Div<f64> for &Poly<N> {
     }
 }
 
-impl<const N: usize> std::ops::AddAssign<&Poly<N>> for Poly<N> {
+impl<const N: usize> core::ops::AddAssign<&Poly<N>> for Poly<N> {
     fn add_assign(&mut self, rhs: &Poly<N>) {
         for (c, d) in self.coeffs.iter_mut().zip(rhs.coeffs) {
             *c += d;
@@ -258,13 +258,13 @@ impl<const N: usize> std::ops::AddAssign<&Poly<N>> for Poly<N> {
     }
 }
 
-impl<const N: usize> std::ops::AddAssign<Poly<N>> for Poly<N> {
+impl<const N: usize> core::ops::AddAssign<Poly<N>> for Poly<N> {
     fn add_assign(&mut self, rhs: Poly<N>) {
         *self += &rhs;
     }
 }
 
-impl<const N: usize> std::ops::Add<Poly<N>> for Poly<N> {
+impl<const N: usize> core::ops::Add<Poly<N>> for Poly<N> {
     type Output = Poly<N>;
 
     fn add(mut self, rhs: Poly<N>) -> Poly<N> {
@@ -273,7 +273,7 @@ impl<const N: usize> std::ops::Add<Poly<N>> for Poly<N> {
     }
 }
 
-impl<const N: usize> std::ops::Add<&Poly<N>> for Poly<N> {
+impl<const N: usize> core::ops::Add<&Poly<N>> for Poly<N> {
     type Output = Poly<N>;
 
     fn add(mut self, rhs: &Poly<N>) -> Poly<N> {
@@ -282,7 +282,7 @@ impl<const N: usize> std::ops::Add<&Poly<N>> for Poly<N> {
     }
 }
 
-impl<const N: usize> std::ops::Add<Poly<N>> for &Poly<N> {
+impl<const N: usize> core::ops::Add<Poly<N>> for &Poly<N> {
     type Output = Poly<N>;
 
     fn add(self, mut rhs: Poly<N>) -> Poly<N> {
@@ -291,7 +291,7 @@ impl<const N: usize> std::ops::Add<Poly<N>> for &Poly<N> {
     }
 }
 
-impl<const N: usize> std::ops::SubAssign<&Poly<N>> for Poly<N> {
+impl<const N: usize> core::ops::SubAssign<&Poly<N>> for Poly<N> {
     fn sub_assign(&mut self, rhs: &Poly<N>) {
         for (c, d) in self.coeffs.iter_mut().zip(rhs.coeffs) {
             *c -= d;
@@ -299,13 +299,13 @@ impl<const N: usize> std::ops::SubAssign<&Poly<N>> for Poly<N> {
     }
 }
 
-impl<const N: usize> std::ops::SubAssign<Poly<N>> for Poly<N> {
+impl<const N: usize> core::ops::SubAssign<Poly<N>> for Poly<N> {
     fn sub_assign(&mut self, rhs: Poly<N>) {
         *self -= &rhs;
     }
 }
 
-impl<const N: usize> std::ops::Sub<Poly<N>> for Poly<N> {
+impl<const N: usize> core::ops::Sub<Poly<N>> for Poly<N> {
     type Output = Poly<N>;
 
     fn sub(mut self, rhs: Poly<N>) -> Poly<N> {
@@ -314,7 +314,7 @@ impl<const N: usize> std::ops::Sub<Poly<N>> for Poly<N> {
     }
 }
 
-impl<const N: usize> std::ops::Sub<&Poly<N>> for Poly<N> {
+impl<const N: usize> core::ops::Sub<&Poly<N>> for Poly<N> {
     type Output = Poly<N>;
 
     fn sub(mut self, rhs: &Poly<N>) -> Poly<N> {
@@ -323,7 +323,7 @@ impl<const N: usize> std::ops::Sub<&Poly<N>> for Poly<N> {
     }
 }
 
-impl<const N: usize> std::ops::Sub<Poly<N>> for &Poly<N> {
+impl<const N: usize> core::ops::Sub<Poly<N>> for &Poly<N> {
     type Output = Poly<N>;
 
     fn sub(self, mut rhs: Poly<N>) -> Poly<N> {

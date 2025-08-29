@@ -2,6 +2,24 @@ use arrayvec::ArrayVec;
 
 use crate::{Cubic, Quadratic, different_signs};
 
+#[cfg(feature = "libm")]
+#[allow(unused_imports, reason = "unused if libm and std are both around")]
+use crate::libm_polyfill::FloatFuncs as _;
+
+// We assume that there is at least one element, at most 3 elements, and buf[1]
+// and buf[2] are already in the right order (if present).
+//
+// This might be faster than the stdlib sort for our special case,
+// but the real reason it's here is for no_std support.
+fn partial_sort<const M: usize>(buf: &mut ArrayVec<f64, M>) {
+    if buf.len() > 1 && buf[0] > buf[1] {
+        buf.swap(0, 1);
+        if buf.len() > 2 && buf[1] > buf[2] {
+            buf.swap(1, 2);
+        }
+    }
+}
+
 impl Cubic {
     /// This is like [`Cubic::eval`] but faster.
     ///
@@ -161,7 +179,7 @@ impl Cubic {
                 // our interval, but it's possible it doesn't because it misses
                 // a double-root (or near-double-root).
                 if lower <= x0 && x0 < r {
-                    out.sort_by(|x, y| x.partial_cmp(y).unwrap());
+                    partial_sort(out);
                 }
             }
         }
@@ -401,7 +419,7 @@ impl Cubic {
             //dbg!(&q);
             if q.is_finite() {
                 ret.extend(q.roots());
-                ret.sort_by(|x, y| x.partial_cmp(y).unwrap());
+                partial_sort(&mut ret);
             }
         }
         ret
