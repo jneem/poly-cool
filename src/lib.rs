@@ -5,7 +5,6 @@
 //! more, with thorough tests and benchmarks.
 
 #![cfg_attr(all(not(feature = "std"), not(test)), no_std)]
-
 mod cubic;
 #[cfg(feature = "libm")]
 mod libm_polyfill;
