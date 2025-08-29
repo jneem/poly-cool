@@ -1,6 +1,6 @@
 use arrayvec::ArrayVec;
 
-use crate::{Cubic, Quadratic, different_signs};
+use crate::{different_signs, Cubic, Quadratic};
 
 #[cfg(feature = "libm")]
 #[allow(unused_imports, reason = "unused if libm and std are both around")]

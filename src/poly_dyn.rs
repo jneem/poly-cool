@@ -1,6 +1,6 @@
 //! Polynomials of dynamic (run-time) degree.
 
-use crate::{Cubic, different_signs, yuksel};
+use crate::{different_signs, yuksel, Cubic};
 
 /// A polynomial of dynamic degree.
 ///
