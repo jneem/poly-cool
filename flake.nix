@@ -34,6 +34,7 @@
             cargo-nextest
             cargo-outdated
             cargo-show-asm
+            taplo
           ];
 
           nativeBuildInputs = [
