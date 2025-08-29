@@ -156,6 +156,13 @@ impl Cubic {
                 if lower <= x1 && x1 <= upper {
                     out.push(x1);
                 }
+
+                // `self.first_root` is supposed to return the smallest root in
+                // our interval, but it's possible it doesn't because it misses
+                // a double-root (or near-double-root).
+                if lower <= x0 && x0 < r {
+                    out.sort_by(|x, y| x.partial_cmp(y).unwrap());
+                }
             }
         }
     }
@@ -527,6 +534,9 @@ mod tests {
             // to lower the accuracy depending on what the actual root is: the
             // intermediate computations scale like the cube of the root.
             let roots = c.roots_between(-10.0, 10.0, 1e-13);
+            if roots.iter().all(|r| r.is_finite()) {
+                assert!(roots.is_sorted());
+            }
             check_root_values(&c, &roots);
 
             let preconditioned = c.precondition();

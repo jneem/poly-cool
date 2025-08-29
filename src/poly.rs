@@ -422,6 +422,11 @@ mod tests {
             }
             let roots = poly.roots_between(-2.0, 2.0, 1e-13);
 
+            // Check that the roots are sorted.
+            if roots.iter().all(|r| r.is_finite()) {
+                assert!(roots.is_sorted());
+            }
+
             // We can't expect great accuracy for huge coefficients, because the
             // evaluations during Newton iteration are subject to error.
             let error = poly.magnitude().max(1.0) * 1e-12;
