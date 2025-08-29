@@ -13,9 +13,6 @@ mod yuksel;
 #[cfg(any(test, feature = "arbitrary"))]
 pub mod arbitrary;
 
-#[cfg(any(test, feature = "dashu-float"))]
-pub mod accurate;
-
 pub use poly::{Cubic, Poly, Quadratic, Quartic, Quintic};
 pub use poly_dyn::PolyDyn;
 

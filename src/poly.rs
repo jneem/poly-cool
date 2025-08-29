@@ -401,4 +401,27 @@ mod tests {
         })
         .budget_ms(5_000);
     }
+
+    #[test]
+    fn planted_root_deg5() {
+        arbtest::arbtest(|u| {
+            let planted_root = crate::arbitrary::float_in_unit_interval(u)?;
+            let poly: Poly<6> = crate::arbitrary::poly_with_planted_root(u, planted_root, 1e-6)?;
+
+            // Bear in mind that Yuksel's algorithm needs iterated derivatives to be
+            // finite (and that we aren't doing any preconditioning or normalization yet),
+            // ensure that the polynomial isn't too big.
+            if (poly.magnitude() * 1024.0).is_infinite() {
+                return Err(arbitrary::Error::IncorrectFormat);
+            }
+            let roots = poly.roots_between(-2.0, 2.0, 1e-13);
+
+            // We can't expect great accuracy for huge coefficients, because the
+            // evaluations during Newton iteration are subject to error.
+            let error = poly.magnitude().max(1.0) * 1e-12;
+            assert!(roots.iter().any(|r| (r - planted_root).abs() <= error));
+            Ok(())
+        })
+        .budget_ms(5_000);
+    }
 }

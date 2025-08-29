@@ -8,20 +8,15 @@ repository = "https://github.com/jneem/poly-cool"
 
 [features]
 arbitrary = ["dep:arbitrary"]
-dashu-float = ["dep:dashu-float", "dep:dashu-base"]
 
 [dependencies]
 arbitrary = { version = "1.4.1", optional = true }
 arrayvec = { version = "0.7.6", default-features = false }
-dashu-base = { version = "0.4.1", optional = true }
-dashu-float = { version = "0.4.3", optional = true }
 
 [dev-dependencies]
 arbitrary = "1.4.1"
 arbtest = "0.3.2"
 criterion = "0.7.0"
-dashu-float = "0.4.3"
-dashu-base = "0.4.1"
 kurbo = "0.11.3"
 
 [[bench]]
@@ -39,5 +34,3 @@ harness = false
 [profile.release]
 debug = true
 
-[profile.dev.package.dashu-float]
-opt-level = 2
