@@ -332,6 +332,12 @@ impl<const N: usize> std::ops::Sub<Poly<N>> for &Poly<N> {
     }
 }
 
+// We do property-testing with two strategies:
+//
+// - for the "value-testing" strategy, we test that the polynomial
+//   approximately evaluates to zero on all the claimed roots.
+// - for the "planted root" strategy, we generate a polynomial with
+//   a known root and check that we find it
 #[cfg(test)]
 mod tests {
     use super::*;

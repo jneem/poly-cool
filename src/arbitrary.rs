@@ -54,52 +54,15 @@ pub fn float_in_unit_interval(u: &mut Unstructured<'_>) -> Result<f64, arbitrary
 
 /// Generate an arbitrary quadratic polynomial.
 pub fn quadratic(u: &mut Unstructured<'_>) -> Result<Quadratic, arbitrary::Error> {
-    let use_coeffs: bool = u.arbitrary()?;
-    if use_coeffs {
-        let c2 = finite_float(u)?;
-        let c1 = another_finite_float(c2, u)?;
-        let c0 = another_finite_float(c1, u)?;
-
-        Ok(Quadratic::new([c0, c1, c2]))
-    } else {
-        let r1 = finite_float(u)?;
-        let r2 = another_finite_float(r1, u)?;
-        let scale = finite_float(u)?;
-
-        Ok(Quadratic::new([
-            check_finite(scale * r1 * r2)?,
-            check_finite(-scale * (r1 + r2))?,
-            scale,
-        ]))
-    }
+    poly(u)
 }
 
 /// Generate an arbitrary cubic polynomial.
 pub fn cubic(u: &mut Unstructured<'_>) -> Result<Cubic, arbitrary::Error> {
-    let use_coeffs: bool = u.arbitrary()?;
-    if use_coeffs {
-        let c3 = finite_float(u)?;
-        let c2 = another_finite_float(c3, u)?;
-        let c1 = another_finite_float(c2, u)?;
-        let c0 = another_finite_float(c1, u)?;
-
-        Ok(Cubic::new([c0, c1, c2, c3]))
-    } else {
-        // Generate the roots, with a bias towards roots being almost-repeated.
-        let r1 = finite_float(u)?;
-        let r2 = another_finite_float(r1, u)?;
-        let r3 = another_finite_float(r2, u)?;
-        let scale = finite_float(u)?;
-
-        Ok(Cubic::new([
-            check_finite(-scale * r1 * r2 * r3)?,
-            check_finite(scale * (r1 * r2 + r1 * r3 + r2 * r3))?,
-            check_finite(-scale * (r1 + r2 + r3))?,
-            scale,
-        ]))
-    }
+    poly(u)
 }
 
+/// Generate an arbitrary polynomial (with finite coefficients).
 pub fn poly<const N: usize>(u: &mut Unstructured<'_>) -> Result<Poly<N>, arbitrary::Error> {
     assert!(N >= 2);
 
@@ -134,6 +97,8 @@ pub fn poly<const N: usize>(u: &mut Unstructured<'_>) -> Result<Poly<N>, arbitra
     }
 }
 
+/// Generate a polynomial with a root at `root` and no other roots within
+/// `buffer` of `root`.
 pub fn poly_with_planted_root<const N: usize>(
     u: &mut Unstructured<'_>,
     root: f64,
